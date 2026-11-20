@@ -799,6 +799,10 @@ a { color: inherit; }
 .following-panel { display: flex; flex-direction: column; gap: 12px; }
 .following-intro, .following-status { margin: 0; color: #a99eb5; font-size: 14px; line-height: 1.5; }
 .following-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.following-switch { display: flex; flex-wrap: wrap; gap: 8px; }
+.following-switch button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; color: #c8bdcf; border: 1px solid rgba(194, 176, 218, .15); background: rgba(255,255,255,.025); border-radius: 10px; font-size: 14px; font-weight: 650; cursor: pointer; }
+.following-switch button.active { color: #f0e4ff; border-color: rgba(196, 148, 235, .42); background: rgba(167, 112, 209, .16); }
+.following-switch button span { min-width: 22px; padding: 2px 6px; color: #e4d4f2; background: rgba(255,255,255,.08); border-radius: 999px; font-size: 12px; text-align: center; }
 .following-students { display: grid; gap: 10px; }
 .following-student { min-width: 0; padding: 13px; border: 1px solid rgba(194, 176, 218, .13); background: rgba(255,255,255,.025); border-radius: 12px; }
 .following-student-heading { display: flex; align-items: center; gap: 10px; }

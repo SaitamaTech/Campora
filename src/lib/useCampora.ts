@@ -21,6 +21,7 @@ export function useCampora() {
   const [departments, setDepartments] = useState<{ id: string; name: string; faculty_id: string }[]>([]);
   const [publicProfiles, setPublicProfiles] = useState<PublicStudentProfile[]>([]);
   const [followingProfiles, setFollowingProfiles] = useState<PublicStudentProfile[]>([]);
+  const [followersProfiles, setFollowersProfiles] = useState<PublicStudentProfile[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const [followingError, setFollowingError] = useState('');
   const [notifications, setNotifications] = useState<CamporaNotification[]>([]);
@@ -170,13 +171,14 @@ export function useCampora() {
     if (authUserIdRef.current !== nextUserId) {
       setNotifications([]);
       setFollowingProfiles([]);
+      setFollowersProfiles([]);
       setFollowingError('');
       setFollowingLoading(false);
     }
     authUserIdRef.current = nextUserId;
     authRef.current = Boolean(userId);
     setAuthenticated(Boolean(userId));
-    if (!userId || !supabase) { setNotifications([]); setFollowingProfiles([]); setFollowingError(''); setFollowingLoading(false); setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); return; }
+    if (!userId || !supabase) { setNotifications([]); setFollowingProfiles([]); setFollowersProfiles([]); setFollowingError(''); setFollowingLoading(false); setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); return; }
     const [{ data: row }, { data: departments }, { data: faculties }, { data: followStats }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
       supabase.from('departments').select('id,name').limit(500),
@@ -252,22 +254,29 @@ export function useCampora() {
     setFollowingLoading(true);
     setFollowingError('');
     try {
-      const [statsResult, followingResult] = await Promise.all([
+      const [statsResult, followingResult, followersResult] = await Promise.all([
         supabase.rpc('get_profile_follow_stats', { p_profile_id: userId }),
         supabase.rpc('get_my_following_profiles', { p_limit: 200 }),
+        supabase.rpc('get_my_follower_profiles', { p_limit: 200 }),
       ]);
       if (userId !== authUserIdRef.current) return;
       if (!statsResult.error && statsResult.data?.[0]) {
         setProfile((current) => current.id === userId ? { ...current, followers_count: Number(statsResult.data[0].followers_count ?? 0) } : current);
       }
       if (followingResult.error) throw followingResult.error;
+      if (followersResult.error) throw followersResult.error;
       setFollowingProfiles((followingResult.data || []).map((row: any) => ({
         id: row.id, full_name: row.full_name, username: row.username || undefined,
         faculty: row.faculty || undefined, department: row.department || undefined,
         level: row.academic_level_label || levelText(row.academic_level),
       })));
+      setFollowersProfiles((followersResult.data || []).map((row: any) => ({
+        id: row.id, full_name: row.full_name, username: row.username || undefined,
+        faculty: row.faculty || undefined, department: row.department || undefined,
+        level: row.academic_level_label || levelText(row.academic_level),
+      })));
     } catch {
-      if (userId === authUserIdRef.current) setFollowingError('Your following list could not be loaded. Check your connection and try again.');
+      if (userId === authUserIdRef.current) setFollowingError('Your follow lists could not be loaded. Check your connection and try again.');
     } finally {
       if (userId === authUserIdRef.current) setFollowingLoading(false);
     }
@@ -355,7 +364,7 @@ export function useCampora() {
   }
   async function forgotPassword(email: string) { if (!supabase) throw new Error('Account recovery requires Supabase configuration.'); const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/?reset=1` }); if (error) throw error; }
   async function resetPassword(password: string) { if (!supabase) throw new Error('Password reset requires Supabase configuration.'); const { error } = await supabase.auth.updateUser({ password }); if (error) throw error; setRecoveryMode(false); }
-  async function logout() { if (supabase) { const { error } = await supabase.auth.signOut(); if (error) throw error; } setAuthenticated(false); authRef.current = false; setFollowingProfiles([]); setFollowingError(''); setFollowingLoading(false); setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); }
+  async function logout() { if (supabase) { const { error } = await supabase.auth.signOut(); if (error) throw error; } setAuthenticated(false); authRef.current = false; setFollowingProfiles([]); setFollowersProfiles([]); setFollowingError(''); setFollowingLoading(false); setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); }
 
   async function createResource(draft: { title: string; course_code: string; faculty_id: string; department_id: string; level: string; file?: File }) {
     assertPlatformWriteAllowed(true);
@@ -505,7 +514,7 @@ export function useCampora() {
     const { error } = await supabase.from('feedback').insert({ submitter_id: user, feedback_type: slug(input.kind), message: input.message, is_anonymous: input.anonymous }); if (error) throw error;
   }
 
-  return { data, profile, setProfile, faculties, departments, publicProfiles, followingProfiles, followingLoading, followingError, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, maintenanceMode: platformControls.maintenance_mode, registrationEnabled: platformControls.registration_enabled, contentModerationEnabled: platformControls.content_moderation_enabled, refresh, loadPublicProfile, searchPublicProfiles, setProfileFollow, refreshProfileFollowStats, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot: adminApi.loadAdminSnapshot, adminReview: adminApi.adminReview, adminPublishAnnouncement: adminApi.adminSaveAnnouncement, adminAddLocation: (draft: { name: string; location_type: string; description: string; address: string; latitude?: number; longitude?: number; osm_url: string }) => adminApi.adminSaveLocation({ ...draft, status: 'pending', is_active: false }), adminSaveLocation: adminApi.adminSaveLocation, adminSetLocationActive: adminApi.adminSetLocationActive, adminDeleteLocation: adminApi.adminDeleteLocation, adminArchiveContent: adminApi.adminArchiveContent, adminAddFaculty: adminApi.adminAddFaculty, adminAddDepartment: adminApi.adminAddDepartment, adminRenameFaculty: adminApi.adminRenameFaculty, adminRenameDepartment: adminApi.adminRenameDepartment, adminSetFacultyActive: adminApi.adminSetFacultyActive, adminSetDepartmentActive: adminApi.adminSetDepartmentActive, adminPublishOpportunity: adminApi.adminPublishOpportunity, adminReplyTicket: adminApi.adminReplyTicket, adminSetRole: adminApi.adminSetRole, adminSetActive: adminApi.adminSetActive, adminResolveReport: adminApi.adminResolveReport, adminSaveSettings: adminApi.adminSaveSettings };
+  return { data, profile, setProfile, faculties, departments, publicProfiles, followingProfiles, followersProfiles, followingLoading, followingError, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, maintenanceMode: platformControls.maintenance_mode, registrationEnabled: platformControls.registration_enabled, contentModerationEnabled: platformControls.content_moderation_enabled, refresh, loadPublicProfile, searchPublicProfiles, setProfileFollow, refreshProfileFollowStats, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot: adminApi.loadAdminSnapshot, adminReview: adminApi.adminReview, adminPublishAnnouncement: adminApi.adminSaveAnnouncement, adminAddLocation: (draft: { name: string; location_type: string; description: string; address: string; latitude?: number; longitude?: number; osm_url: string }) => adminApi.adminSaveLocation({ ...draft, status: 'pending', is_active: false }), adminSaveLocation: adminApi.adminSaveLocation, adminSetLocationActive: adminApi.adminSetLocationActive, adminDeleteLocation: adminApi.adminDeleteLocation, adminArchiveContent: adminApi.adminArchiveContent, adminAddFaculty: adminApi.adminAddFaculty, adminAddDepartment: adminApi.adminAddDepartment, adminRenameFaculty: adminApi.adminRenameFaculty, adminRenameDepartment: adminApi.adminRenameDepartment, adminSetFacultyActive: adminApi.adminSetFacultyActive, adminSetDepartmentActive: adminApi.adminSetDepartmentActive, adminPublishOpportunity: adminApi.adminPublishOpportunity, adminReplyTicket: adminApi.adminReplyTicket, adminSetRole: adminApi.adminSetRole, adminSetActive: adminApi.adminSetActive, adminResolveReport: adminApi.adminResolveReport, adminSaveSettings: adminApi.adminSaveSettings };
 }
 
 async function currentUserId() { if (!supabase) throw new Error('Database is not connected.'); const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw new Error('Please sign in again.'); return data.user.id; }
