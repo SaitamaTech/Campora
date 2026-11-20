@@ -18,13 +18,13 @@ Without Supabase settings, CAMPORA starts in a clearly labeled local preview mod
 ## Supabase setup
 
 1. Create a Supabase project.
-2. Apply `supabase/migrations/202611200001_initial_schema.sql` from the SQL editor or Supabase CLI.
+2. Apply the SQL migrations in `supabase/migrations/` in filename order: `202611200001_initial_schema.sql`, then `202611200002_rls_hardening.sql`. You can run each file from the SQL editor or use the Supabase CLI.
 3. Promote the first administrator from a trusted Supabase SQL session only. Never expose privileged credentials in client code.
 4. Add verified faculties, departments, courses, opportunities, announcements and campus locations through an authorized admin workflow. CAMPORA intentionally contains no invented campus directory or student records.
 5. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to local development and the Vercel project. Use only the public anon/publishable key.
 6. Set the Supabase Auth site URL and email redirect URLs to the deployed CAMPORA origin.
 
-The migration creates private storage buckets and row-level security policies. Public reads are limited to approved content; user submissions, support tickets and protected contact requests are owner-scoped.
+The migrations create private storage buckets and row-level security policies. Public reads are limited to approved content; user submissions, support tickets and protected contact requests are owner-scoped. Moderation states and official/verified account fields are protected from self-approval.
 
 ## Build and deploy
 
