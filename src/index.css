@@ -877,3 +877,42 @@ a { color: inherit; }
   .phone-notification-actions { display: grid; }
   .phone-notification-actions .button { width: 100%; justify-content: center; }
 }
+
+
+/* Notification inbox: clear unread hierarchy with readable mobile-first text. */
+.notification-count { position: absolute; top: -6px; right: -7px; min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; color: #171021; background: #c4b5fd; border: 2px solid var(--bg); border-radius: 999px; font-size: 10px; font-weight: 800; line-height: 1; }
+.notification-inbox { display: grid; gap: 12px; }
+.notification-inbox-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 14px; }
+.notification-inbox-top .small-link { display: inline-flex; align-items: center; gap: 6px; }
+.notification-list { display: grid; gap: 8px; max-height: min(58vh, 560px); overflow-y: auto; padding: 2px 3px 4px 0; }
+.notification-row { width: 100%; display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: start; gap: 12px; padding: 13px; color: var(--text); text-align: left; background: rgba(255, 255, 255, .025); border: 1px solid rgba(206, 190, 224, .12); border-radius: 13px; cursor: pointer; transition: border-color .16s ease, background .16s ease; }
+.notification-row:hover, .notification-row:focus-visible { background: rgba(167, 139, 250, .09); border-color: rgba(196, 181, 253, .32); outline: none; }
+.notification-row.is-unread { background: rgba(167, 139, 250, .085); border-color: rgba(196, 181, 253, .25); }
+.notification-row-icon { width: 38px; height: 38px; display: grid; place-items: center; color: var(--accent-2); background: rgba(167, 139, 250, .13); border-radius: 12px; }
+.notification-row-copy { min-width: 0; display: grid; gap: 5px; }
+.notification-row-heading { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.notification-row-heading b { font-size: 15px; line-height: 1.4; }
+.notification-row-heading i { width: 8px; height: 8px; flex: 0 0 8px; margin-top: 5px; background: #c4b5fd; border-radius: 50%; }
+.notification-row-body { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: 14px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.notification-row-meta { display: flex; flex-wrap: wrap; gap: 8px; color: #a99db7; font-size: 12px; text-transform: capitalize; }
+.notification-detail { display: grid; justify-items: start; gap: 14px; }
+.notification-back { display: inline-flex; align-items: center; gap: 6px; padding: 0; color: var(--accent-2); background: transparent; border: 0; font-size: 14px; font-weight: 650; cursor: pointer; }
+.notification-kind { display: inline-flex; align-items: center; padding: 5px 9px; color: #d7c9f4; background: rgba(167, 139, 250, .13); border: 1px solid rgba(196, 181, 253, .18); border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: capitalize; }
+.notification-kind.is-update { color: #e6ddff; background: rgba(139, 92, 246, .2); }
+.notification-detail h3 { margin: 0; color: var(--text); font-size: 21px; line-height: 1.35; }
+.notification-detail-body { width: 100%; margin: 0; color: var(--muted); font-size: 16px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notification-detail small { display: inline-flex; align-items: center; gap: 6px; color: #a99db7; font-size: 13px; }
+.notification-detail-done { width: 100%; margin-top: 2px; }
+.notification-guest { display: grid; justify-items: center; gap: 12px; padding: 10px 4px 4px; text-align: center; }
+.notification-inbox-icon { width: 46px; height: 46px; display: grid; place-items: center; color: var(--accent-2); background: rgba(167, 139, 250, .15); border-radius: 14px; }
+.notification-guest h3 { margin: 0; font-size: 19px; }
+.notification-guest p { margin: 0 0 4px; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.notification-loading { display: flex; align-items: center; gap: 9px; padding: 20px 4px; color: var(--muted); font-size: 15px; }
+.notification-loading .spin { width: 15px; height: 15px; border: 2px solid rgba(196, 181, 253, .28); border-top-color: var(--accent-2); border-radius: 50%; animation: spin 1s linear infinite; }
+@media (max-width: 540px) {
+  .notification-row { grid-template-columns: 35px minmax(0, 1fr); gap: 9px; padding: 11px; }
+  .notification-row-icon { width: 34px; height: 34px; }
+  .notification-row-heading b { font-size: 14px; }
+  .notification-row-body { font-size: 13px; }
+  .notification-detail-body { font-size: 15px; }
+}

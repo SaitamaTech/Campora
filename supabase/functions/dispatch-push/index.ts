@@ -94,7 +94,7 @@ Deno.serve(async (request) => {
           id: row.id,
           title: row.title,
           body: typeof row.body === 'string' ? row.body : '',
-          url: '/#home',
+          url: `/#notification/${row.id}`,
         }), { TTL: 3600, urgency: 'normal' });
         return { sent: true, removed: false, id: subscription.id };
       } catch (cause) {

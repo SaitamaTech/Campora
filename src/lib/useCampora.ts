@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CamporaData, CommunityComment, CommunityPost, ExploreDraft, Profile, PublicStudentProfile, Resource, Role, SupportTicket } from './types';
+import type { CamporaData, CamporaNotification, CommunityComment, CommunityPost, ExploreDraft, Profile, PublicStudentProfile, Resource, Role, SupportTicket } from './types';
 import type { AdminSnapshot } from '../components/AdminDashboard';
 import { demoData, demoStorageKey } from './demoData';
 import { supabase, supabaseConfigured } from './supabase';
@@ -20,11 +20,14 @@ export function useCampora() {
   const [faculties, setFaculties] = useState<{ id: string; name: string }[]>([]);
   const [departments, setDepartments] = useState<{ id: string; name: string; faculty_id: string }[]>([]);
   const [publicProfiles, setPublicProfiles] = useState<PublicStudentProfile[]>([]);
+  const [notifications, setNotifications] = useState<CamporaNotification[]>([]);
   const authRef = useRef(false);
+  const authUserIdRef = useRef<string | null>(null);
   const demo = !supabaseConfigured;
 
   const refresh = useCallback(async () => {
     if (!supabase) return;
+    const requestingUserId = authUserIdRef.current;
     setSyncError('');
     try {
       const [announcementResult, resourceResult, locationResult, opportunityResult, lostResult, listingResult, postResult, commentResult, profileResult, facultyResult, departmentResult] = await Promise.all([
@@ -92,19 +95,34 @@ export function useCampora() {
         comments: mappedComments, tickets: [], supportReplies: [], feedback: [],
       };
       if (authRef.current) {
-        const [ticketResult, replyResult] = await Promise.all([
+        const [ticketResult, replyResult, notificationResult] = await Promise.all([
           supabase.from('support_tickets').select('*').order('created_at', { ascending: false }).limit(50),
           supabase.from('support_replies').select('*').order('created_at', { ascending: true }).limit(300),
+          supabase.from('notifications').select('id,notification_type,title,body,resource_type,resource_id,is_read,read_at,created_at').order('created_at', { ascending: false }).limit(100),
         ]);
+        const privateError = [ticketResult, replyResult, notificationResult].find((result) => result.error)?.error;
+        if (privateError) throw privateError;
         const names = profiles;
         next.tickets = (ticketResult.data || []).map((row: any) => ({ id: row.id, reference: row.ticket_reference, subject: row.subject, category: titleCase(row.category), message: row.description, status: normalizeTicketStatus(row.status), created_at: row.created_at }));
         next.supportReplies = (replyResult.data || []).map((row: any) => ({ id: row.id, ticket_id: row.ticket_id, responder_name: names.get(row.author_id)?.full_name || 'CAMPORA Support', message: row.body, created_at: row.created_at }));
+        if (requestingUserId === authUserIdRef.current) setNotifications((notificationResult.data || []) as CamporaNotification[]);
+      } else {
+        setNotifications([]);
       }
       setData(next);
     } catch (error) {
       console.error('CAMPORA data refresh failed:', error);
       setSyncError('CAMPORA could not refresh from the connected database. Check your Supabase setup and try again.');
     } finally { setLoading(false); }
+  }, []);
+
+  const markNotificationRead = useCallback(async (id: string) => {
+    if (!supabase || !authRef.current) throw new Error('Sign in to open your notifications.');
+    const { data: marked, error } = await supabase.rpc('mark_campora_notification_read', { p_notification_id: id });
+    if (error) throw error;
+    if (marked !== true) throw new Error('This notification is no longer available.');
+    const readAt = now();
+    setNotifications((current) => current.map((notification) => notification.id === id ? { ...notification, is_read: true, read_at: notification.read_at || readAt } : notification));
   }, []);
 
   useEffect(() => {
@@ -130,9 +148,12 @@ export function useCampora() {
   }, [refresh]);
 
   async function applySession(userId?: string, email?: string) {
+    const nextUserId = userId || null;
+    if (authUserIdRef.current !== nextUserId) setNotifications([]);
+    authUserIdRef.current = nextUserId;
     authRef.current = Boolean(userId);
     setAuthenticated(Boolean(userId));
-    if (!userId || !supabase) { setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); return; }
+    if (!userId || !supabase) { setNotifications([]); setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); return; }
     const [{ data: row }, { data: departments }, { data: faculties }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
       supabase.from('departments').select('id,name').limit(500),
@@ -509,7 +530,7 @@ export function useCampora() {
     await refresh();
   }
 
-  return { data, profile, setProfile, faculties, departments, publicProfiles, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
+  return { data, profile, setProfile, faculties, departments, publicProfiles, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
 }
 
 async function currentUserId() { if (!supabase) throw new Error('Database is not connected.'); const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw new Error('Please sign in again.'); return data.user.id; }

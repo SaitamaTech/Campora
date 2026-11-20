@@ -30,6 +30,18 @@ export interface Profile {
   is_verified_representative?: boolean;
 }
 
+export interface CamporaNotification {
+  id: string;
+  notification_type: string;
+  title: string;
+  body: string | null;
+  resource_type: string | null;
+  resource_id: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
 export interface PublicStudentProfile {
   id: string;
   full_name: string;

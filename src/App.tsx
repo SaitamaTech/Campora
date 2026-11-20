@@ -12,6 +12,7 @@ import { Modal } from './components/ui';
 import { useCampora } from './lib/useCampora';
 import './index.css';
 import { NotificationSettings } from './components/NotificationSettings';
+import { NotificationInbox } from './components/NotificationInbox';
 import type { ExploreTab, Page, PublicStudentProfile } from './lib/types';
 
 const navigation: { page: Page; label: string; icon: typeof House; key: string }[] = [
@@ -30,6 +31,8 @@ export default function App() {
   const [page, setPage] = useState<Page>(() => parseHash(window.location.hash).page);
   const [exploreTab, setExploreTab] = useState<ExploreTab>(() => parseHash(window.location.hash).tab || 'campus');
   const [special, setSpecial] = useState<'support' | 'admin' | null>(() => parseHash(window.location.hash).special ?? null);
+  const [notificationInboxOpen, setNotificationInboxOpen] = useState(() => Boolean(parseHash(window.location.hash).notificationId));
+  const [notificationIdToOpen, setNotificationIdToOpen] = useState(() => parseHash(window.location.hash).notificationId || '');
   const [online, setOnline] = useState(navigator.onLine);
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -45,7 +48,7 @@ export default function App() {
   useEffect(() => {
     const onlineHandler = () => setOnline(true); const offlineHandler = () => setOnline(false);
     const installHandler = (event: Event) => { event.preventDefault(); setInstallEvent(event as InstallPromptEvent); };
-    const hashHandler = () => { const route = parseHash(window.location.hash); setPage(route.page); setExploreTab(route.tab || 'campus'); setSpecial(route.special ?? null); };
+    const hashHandler = () => { const route = parseHash(window.location.hash); setPage(route.page); setExploreTab(route.tab || 'campus'); setSpecial(route.special ?? null); setNotificationIdToOpen(route.notificationId || ''); setNotificationInboxOpen(Boolean(route.notificationId)); };
     window.addEventListener('online', onlineHandler); window.addEventListener('offline', offlineHandler); window.addEventListener('beforeinstallprompt', installHandler); window.addEventListener('hashchange', hashHandler);
     return () => { window.removeEventListener('online', onlineHandler); window.removeEventListener('offline', offlineHandler); window.removeEventListener('beforeinstallprompt', installHandler); window.removeEventListener('hashchange', hashHandler); };
   }, []);
@@ -72,8 +75,15 @@ export default function App() {
   function runSearch(e: FormEvent) { e.preventDefault(); if (!query.trim()) return; setSearchOpen(true); }
   function openResult(item: SearchResult) { navigate(item.page, item.tab); setSearchOpen(false); setQuery(''); }
 
+  function closeNotificationInbox() {
+    setNotificationInboxOpen(false);
+    setNotificationIdToOpen('');
+    if (parseHash(window.location.hash).notificationId) window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}#home`);
+  }
+
   const activeNav = special ? 'profile' : page;
   const welcome = app.profile.full_name?.trim().split(' ')[0] || 'Student';
+  const unreadNotificationCount = app.notifications.filter((notification) => !notification.is_read).length;
 
   return <div className="app-shell">
     <aside className={`sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
@@ -86,7 +96,7 @@ export default function App() {
     </aside>
 
     <div className="app-main">
-      <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation"><Menu size={19} /></button><div className="breadcrumb"><span>Campus</span><ChevronRight size={13} /><b>{special === 'support' ? 'Help & support' : special === 'admin' ? 'Administration' : navigation.find((item) => item.page === page)?.label}</b></div></div><form className="global-search" onSubmit={runSearch}><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search CAMPORA…" aria-label="Search CAMPORA" /><kbd>↵</kbd><button type="submit" aria-label="Search"><ArrowUpRight size={15} /></button></form><div className="topbar-actions"><div className={`network-status ${online ? 'online' : 'offline'}`}><span className="network-dot" />{online ? 'Online' : 'Offline'}</div><button className="icon-button notification-button" onClick={() => setNotificationSettingsOpen(true)} aria-label="Phone notification settings" aria-haspopup="dialog"><Bell size={17} /><i /></button>{app.authenticated ? <button className="user-chip" onClick={() => navigate('profile')}><span className="avatar avatar-small">{app.profile.avatar_url ? <img src={app.profile.avatar_url} alt="" aria-hidden="true" /> : app.profile.full_name?.slice(0,1) || 'S'}</span><span>{welcome}</span></button> : <button className="top-signin" onClick={() => navigate('profile')}><LogIn size={14} />Sign in</button>}</div></header>
+      <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation"><Menu size={19} /></button><div className="breadcrumb"><span>Campus</span><ChevronRight size={13} /><b>{special === 'support' ? 'Help & support' : special === 'admin' ? 'Administration' : navigation.find((item) => item.page === page)?.label}</b></div></div><form className="global-search" onSubmit={runSearch}><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search CAMPORA…" aria-label="Search CAMPORA" /><kbd>↵</kbd><button type="submit" aria-label="Search"><ArrowUpRight size={15} /></button></form><div className="topbar-actions"><div className={`network-status ${online ? 'online' : 'offline'}`}><span className="network-dot" />{online ? 'Online' : 'Offline'}</div><button className="icon-button notification-button" onClick={() => { setNotificationIdToOpen(''); setNotificationInboxOpen(true); }} aria-label={unreadNotificationCount ? `${unreadNotificationCount} unread notifications` : 'Notifications'} aria-haspopup="dialog"><Bell size={17} />{unreadNotificationCount > 0 && <span className="notification-count">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</span>}</button>{app.authenticated ? <button className="user-chip" onClick={() => navigate('profile')}><span className="avatar avatar-small">{app.profile.avatar_url ? <img src={app.profile.avatar_url} alt="" aria-hidden="true" /> : app.profile.full_name?.slice(0,1) || 'S'}</span><span>{welcome}</span></button> : <button className="top-signin" onClick={() => navigate('profile')}><LogIn size={14} />Sign in</button>}</div></header>
 
       {!online && <div className="offline-banner"><WifiOff size={15} /><span>You’re offline. CAMPORA’s app shell is available; uploads and database actions need a connection.</span></div>}
       {app.syncError && <div className="sync-banner" role="alert"><Activity size={15} /><span>{app.syncError}</span><button onClick={() => void app.refresh()}>Retry sync</button></div>}
@@ -106,6 +116,7 @@ export default function App() {
     </div>
 
     <nav className="mobile-tabbar" aria-label="Mobile navigation">{navigation.map(({ page: navPage, label, icon: Icon }) => <button key={navPage} className={activeNav === navPage && !special ? 'active' : ''} onClick={() => navigate(navPage)}><Icon size={19} /><span>{label}</span></button>)}</nav>
+    <NotificationInbox open={notificationInboxOpen} authenticated={app.authenticated} loading={app.loading} notifications={app.notifications} initialNotificationId={notificationIdToOpen} onClose={closeNotificationInbox} onSignIn={() => { closeNotificationInbox(); navigate('profile'); }} onOpenSettings={() => { closeNotificationInbox(); setNotificationSettingsOpen(true); }} onMarkRead={app.markNotificationRead} />
     <NotificationSettings open={notificationSettingsOpen} authenticated={app.authenticated} configured={app.configured} onClose={() => setNotificationSettingsOpen(false)} onSignIn={() => { setNotificationSettingsOpen(false); navigate('profile'); }} />
     {toast && <div className="toast" role="status"><span className="toast-icon"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {(viewedStudent || studentProfileLoading) && <PublicProfileModal profile={viewedStudent} loading={studentProfileLoading} onClose={() => { setViewedStudent(null); setStudentProfileLoading(false); }} />}
@@ -114,8 +125,9 @@ export default function App() {
   </div>;
 }
 
-function parseHash(hash: string): { page: Page; tab?: ExploreTab; special?: 'support' | 'admin' } {
+function parseHash(hash: string): { page: Page; tab?: ExploreTab; special?: 'support' | 'admin'; notificationId?: string } {
   const parts = hash.replace(/^#/, '').split('/');
+  if (parts[0] === 'notification' && parts[1]) return { page: 'home', notificationId: parts[1] };
   if (parts[0] === 'support') return { page: 'profile', special: 'support' };
   if (parts[0] === 'admin') return { page: 'profile', special: 'admin' };
   const page: Page = ['academics','explore','community','profile','home'].includes(parts[0]) ? parts[0] as Page : 'home';
