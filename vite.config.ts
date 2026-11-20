@@ -1,0 +1,32 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['campora-icon.svg'],
+      manifest: {
+        name: 'CAMPORA — Your Campus, Connected',
+        short_name: 'CAMPORA',
+        description: 'Your campus. Your community. Your world.',
+        theme_color: '#0b0d13',
+        background_color: '#0b0d13',
+        display: 'standalone',
+        orientation: 'portrait-primary',
+        start_url: '/',
+        scope: '/',
+        icons: [{ src: '/campora-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,ico,png,woff2}'],
+        navigateFallback: '/index.html',
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
+      },
+    }),
+  ],
+});
