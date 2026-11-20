@@ -796,6 +796,25 @@ a { color: inherit; }
 .feeling-pill { display: inline-flex; align-items: center; min-height: 25px; padding: 3px 9px; margin-top: 9px; color: #e6c7ff; background: rgba(182, 112, 240, .1); border: 1px solid rgba(182, 112, 240, .18); border-radius: 999px; font-size: 12px; }
 .profile-name-link { display: inline-flex; align-items: center; width: fit-content; padding: 0; color: #e8d8f7; border: 0; background: transparent; font-size: 14px; font-weight: 700; text-align: left; cursor: pointer; }
 .profile-name-link:hover { color: #d59aff; text-decoration: underline; }
+.following-panel { display: flex; flex-direction: column; gap: 12px; }
+.following-intro, .following-status { margin: 0; color: #a99eb5; font-size: 14px; line-height: 1.5; }
+.following-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.following-students { display: grid; gap: 10px; }
+.following-student { min-width: 0; padding: 13px; border: 1px solid rgba(194, 176, 218, .13); background: rgba(255,255,255,.025); border-radius: 12px; }
+.following-student-heading { display: flex; align-items: center; gap: 10px; }
+.following-student-open { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; padding: 0; color: #d9d1e3; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.following-avatar { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; color: #ead7ff; background: rgba(167, 139, 250, .15); border: 1px solid rgba(196, 181, 253, .18); border-radius: 12px; font-size: 16px; font-weight: 700; }
+.following-student-open > span:nth-child(2) { min-width: 0; flex: 1; }
+.following-student-open b, .following-student-open small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.following-student-open b { color: #f0e8f6; font-size: 15px; }
+.following-student-open small { margin-top: 3px; color: #a99eb5; font-size: 13px; }
+.following-student-open > svg { flex: 0 0 auto; color: #c69ced; }
+.following-unfollow { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; color: #d6b7eb; border: 1px solid rgba(194, 176, 218, .16); background: rgba(255,255,255,.035); border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.following-unfollow:disabled { opacity: .55; cursor: wait; }
+.following-student-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 10px; margin: 12px 0 0; }
+.following-student-facts > div { min-width: 0; }
+.following-student-facts dt { margin-bottom: 3px; color: #94899f; font-size: 12px; }
+.following-student-facts dd { margin: 0; color: #ded4e8; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
 .post-byline > strong { font-size: 14px; }
 .post-byline > span { font-size: 12px; }
 .post-body { font-size: 14px; }
