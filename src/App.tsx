@@ -5,12 +5,13 @@ import { Academics } from './components/Academics';
 import { Explore } from './components/Explore';
 import { Community } from './components/Community';
 import { ProfilePage } from './components/Profile';
+import { PublicProfileModal } from './components/PublicProfileModal';
 import { SupportCenter } from './components/SupportCenter';
 import { AdminDashboard } from './components/AdminDashboard';
 import { Modal } from './components/ui';
 import { useCampora } from './lib/useCampora';
 import './index.css';
-import type { ExploreTab, Page } from './lib/types';
+import type { ExploreTab, Page, PublicStudentProfile } from './lib/types';
 
 const navigation: { page: Page; label: string; icon: typeof House; key: string }[] = [
   { page: 'home', label: 'Home', icon: House, key: '01' },
@@ -35,6 +36,8 @@ export default function App() {
   const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(null);
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [viewedStudent, setViewedStudent] = useState<PublicStudentProfile | null>(null);
+  const [studentProfileLoading, setStudentProfileLoading] = useState(false);
   const results = useMemo(() => searchData(app.data, query), [app.data, query]);
 
   useEffect(() => {
@@ -55,6 +58,13 @@ export default function App() {
   function openSupport() { setSpecial('support'); setMobileMenuOpen(false); window.history.pushState({}, '', '#support'); }
   function openAdmin() { if (app.profile.role !== 'administrator') { setToast('Administrator access is required.'); return; } setSpecial('admin'); window.history.pushState({}, '', '#admin'); }
   function backFromSpecial() { setSpecial(null); setPage('profile'); window.history.pushState({}, '', '#profile'); }
+  async function openStudentProfile(profileId: string) {
+    setViewedStudent(null);
+    setStudentProfileLoading(true);
+    try { setViewedStudent(await app.loadPublicProfile(profileId)); }
+    catch (error) { setToast(error instanceof Error ? error.message : 'Could not load this student profile.'); }
+    finally { setStudentProfileLoading(false); }
+  }
   async function installApp() { if (!installEvent) { setInstallHelpOpen(true); return; } await installEvent.prompt(); const choice = await installEvent.userChoice; if (choice.outcome === 'accepted') setToast('CAMPORA is being added to your device.'); setInstallEvent(null); }
   async function safeAction<T>(action: () => Promise<T>): Promise<T> { try { return await action(); } catch (error) { setToast(error instanceof Error ? error.message : 'That action could not be completed.'); throw error; } }
   function runSearch(e: FormEvent) { e.preventDefault(); if (!query.trim()) return; setSearchOpen(true); }
@@ -82,9 +92,9 @@ export default function App() {
       <main className="main-content">
         {app.loading && <div className="loading-screen"><div className="loading-logo"><img src="/campora-icon.svg" alt="" /></div><div className="skeleton-line skeleton-wide" /><div className="skeleton-line" /><div className="skeleton-grid"><span /><span /><span /></div><p>Connecting to your campus space…</p></div>}
         {!app.loading && !special && page === 'home' && <Home data={app.data} profile={app.profile} demo={app.demo} onNavigate={navigate} onSupport={openSupport} />}
-        {!app.loading && !special && page === 'academics' && <Academics resources={app.data.resources} demo={app.demo} onCreate={(draft) => safeAction(() => app.createResource(draft))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onToast={setToast} />}
+        {!app.loading && !special && page === 'academics' && <Academics resources={app.data.resources} faculties={app.faculties} departments={app.departments} demo={app.demo} onCreate={(draft) => safeAction(() => app.createResource(draft))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onViewProfile={(id) => void openStudentProfile(id)} onToast={setToast} />}
         {!app.loading && !special && page === 'explore' && <Explore tab={exploreTab} onTab={setExploreTab} locations={app.data.locations} opportunities={app.data.opportunities} lostFound={app.data.lostFound} listings={app.data.listings} demo={app.demo} onCreate={(kind, draft) => safeAction(() => app.createExploreItem(kind, draft))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onContact={(kind, id, message) => safeAction(() => app.contactRequest(kind, id, message))} onToast={setToast} />}
-        {!app.loading && !special && page === 'community' && <Community posts={app.data.posts} comments={app.data.comments} profile={app.profile} demo={app.demo} onCreate={(body) => safeAction(() => app.createPost(body))} onComment={(id, body) => safeAction(() => app.createComment(id, body))} onReact={(id) => safeAction(() => app.react(id))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onToast={setToast} />}
+        {!app.loading && !special && page === 'community' && <Community posts={app.data.posts} comments={app.data.comments} profile={app.profile} publicProfiles={app.publicProfiles} demo={app.demo} onCreate={(body, feeling) => safeAction(() => app.createPost(body, feeling))} onComment={(id, body) => safeAction(() => app.createComment(id, body))} onReact={(id) => safeAction(() => app.react(id))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onViewProfile={(id) => void openStudentProfile(id)} onToast={setToast} />}
         {!app.loading && !special && page === 'profile' && <ProfilePage key={app.recoveryMode ? 'recovery' : 'normal'} profile={app.profile} faculties={app.faculties} departments={app.departments} authenticated={app.authenticated} configured={app.configured} demo={app.demo} recoveryMode={app.recoveryMode} onSave={(profile) => safeAction(() => app.saveProfile(profile))} onUploadAvatar={(file) => safeAction(() => app.uploadProfilePhoto(file))} onAuth={(mode, values) => safeAction(() => app.authenticate(mode, values))} onGoogleAuth={() => safeAction(() => app.signInWithGoogle())} onForgot={(email) => safeAction(() => app.forgotPassword(email))} onResetPassword={(password) => safeAction(() => app.resetPassword(password))} onLogout={() => safeAction(() => app.logout())} onSupport={openSupport} onAdmin={openAdmin} />}
         {!app.loading && special === 'support' && <SupportCenter tickets={app.data.tickets} replies={app.data.supportReplies} feedback={app.data.feedback} demo={app.demo} authenticated={app.authenticated} onBack={backFromSpecial} onCreateTicket={(draft) => safeAction(() => app.createSupportTicket(draft))} onCloseTicket={(id) => safeAction(() => app.closeTicket(id))} onFeedback={(draft) => safeAction(() => app.submitFeedback(draft))} onToast={setToast} />}
         {!app.loading && special === 'admin' && app.profile.role === 'administrator' && <AdminDashboard onBack={backFromSpecial} onLoad={() => app.loadAdminSnapshot()} onReview={(kind, id, approved) => safeAction(() => app.adminReview(kind, id, approved))} onPublishAnnouncement={(draft) => safeAction(() => app.adminPublishAnnouncement(draft))} onAddLocation={(draft) => safeAction(() => app.adminAddLocation(draft))} onAddFaculty={(name) => safeAction(() => app.adminAddFaculty(name))} onAddDepartment={(draft) => safeAction(() => app.adminAddDepartment(draft))} onPublishOpportunity={(draft) => safeAction(() => app.adminPublishOpportunity(draft))} onReplyTicket={(ticketId, message, status) => safeAction(() => app.adminReplyTicket(ticketId, message, status))} onSetRole={(id, role) => safeAction(() => app.adminSetRole(id, role))} onSetActive={(id, active) => safeAction(() => app.adminSetActive(id, active))} onResolveReport={(id, status, notes) => safeAction(() => app.adminResolveReport(id, status, notes))} onToast={setToast} />}
@@ -95,6 +105,7 @@ export default function App() {
 
     <nav className="mobile-tabbar" aria-label="Mobile navigation">{navigation.map(({ page: navPage, label, icon: Icon }) => <button key={navPage} className={activeNav === navPage && !special ? 'active' : ''} onClick={() => navigate(navPage)}><Icon size={19} /><span>{label}</span></button>)}</nav>
     {toast && <div className="toast" role="status"><span className="toast-icon"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
+    {(viewedStudent || studentProfileLoading) && <PublicProfileModal profile={viewedStudent} loading={studentProfileLoading} onClose={() => { setViewedStudent(null); setStudentProfileLoading(false); }} />}
     {searchOpen && <Modal title={`Search results${query.trim() ? ` for “${query.trim()}”` : ''}`} onClose={() => setSearchOpen(false)} wide><div className="search-results">{results.length ? results.map((result, index) => { const Icon = result.icon; return <button key={`${result.title}-${index}`} className="search-result" onClick={() => openResult(result)}><span className="search-result-icon"><Icon size={16} /></span><span><b>{result.title}</b><small>{result.detail}</small></span><ArrowUpRight size={15} /></button>; }) : <div className="search-empty"><Search size={20} /><b>No results found</b><span>Try a course code, campus place or a different keyword.</span></div>}</div></Modal>}
     {installHelpOpen && <Modal title="Install CAMPORA" onClose={() => setInstallHelpOpen(false)}><div className="install-help"><div className="install-help-icon"><Wifi size={20} /></div><p>Install CAMPORA from your browser menu to add it to your home screen. On iPhone or iPad, choose <b>Share → Add to Home Screen</b>. On Android, choose <b>Install app</b> or <b>Add to Home screen</b>.</p><p>The offline app shell is available after the first visit. Database submissions still need an internet connection.</p><button className="button button-primary" onClick={() => setInstallHelpOpen(false)}>Got it</button></div></Modal>}
   </div>;

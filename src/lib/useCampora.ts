@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CamporaData, CommunityComment, CommunityPost, ExploreDraft, Profile, Resource, Role, SupportTicket } from './types';
+import type { CamporaData, CommunityComment, CommunityPost, ExploreDraft, Profile, PublicStudentProfile, Resource, Role, SupportTicket } from './types';
 import type { AdminSnapshot } from '../components/AdminDashboard';
 import { demoData, demoStorageKey } from './demoData';
 import { supabase, supabaseConfigured } from './supabase';
@@ -19,6 +19,7 @@ export function useCampora() {
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [faculties, setFaculties] = useState<{ id: string; name: string }[]>([]);
   const [departments, setDepartments] = useState<{ id: string; name: string; faculty_id: string }[]>([]);
+  const [publicProfiles, setPublicProfiles] = useState<PublicStudentProfile[]>([]);
   const authRef = useRef(false);
   const demo = !supabaseConfigured;
 
@@ -35,7 +36,7 @@ export function useCampora() {
         supabase.from('marketplace_listings').select('*').order('created_at', { ascending: false }).limit(60),
         supabase.from('community_posts').select('*').order('created_at', { ascending: false }).limit(40),
         supabase.from('post_comments').select('*').order('created_at', { ascending: true }).limit(300),
-        supabase.from('profiles').select('id,full_name,department_id,faculty_id,academic_level,role,verified_representative').limit(500),
+        supabase.rpc('get_public_student_profiles', { p_profile_id: null, p_search: null, p_limit: 500 }),
         supabase.from('faculties').select('id,name').limit(200),
         supabase.from('departments').select('id,name,faculty_id').limit(500),
       ]);
@@ -43,12 +44,20 @@ export function useCampora() {
       if (firstError) throw firstError;
       setFaculties((facultyResult.data || []).map((row: any) => ({ id: row.id, name: row.name })));
       setDepartments((departmentResult.data || []).map((row: any) => ({ id: row.id, name: row.name, faculty_id: row.faculty_id })));
-      const profiles = new Map((profileResult.data || []).map((row: any) => [row.id, row]));
+      const visibleProfiles: PublicStudentProfile[] = (profileResult.data || []).map((row: any) => ({
+        id: row.id, full_name: row.full_name, username: row.username || undefined,
+        faculty: row.faculty || undefined, department: row.department || undefined,
+        level: levelText(row.academic_level), bio: row.bio || undefined,
+      }));
+      setPublicProfiles(visibleProfiles);
+      const profiles = new Map(visibleProfiles.map((row) => [row.id, row]));
       const faculties = new Map((facultyResult.data || []).map((row: any) => [row.id, row.name]));
       const departments = new Map((departmentResult.data || []).map((row: any) => [row.id, row.name]));
       const mappedResources: Resource[] = await Promise.all((resourceResult.data || []).map(async (row: any) => ({
-        id: row.id, title: row.title, course_code: row.course_code || '', faculty: row.faculty || faculties.get(row.faculty_id) || '', department: row.department || '', level: levelText(row.academic_level ?? row.level),
-        contributor: profiles.get(row.contributor_id)?.full_name || 'Community contributor', file_name: row.file_name || '', file_size: row.file_size_bytes || row.file_size,
+        id: row.id, title: row.title, course_code: row.course_code || '', faculty_id: row.faculty_id || undefined, department_id: row.department_id || undefined,
+        faculty: row.faculty || faculties.get(row.faculty_id) || '', department: row.department || departments.get(row.department_id) || '', level: levelText(row.academic_level ?? row.level),
+        contributor: profiles.get(row.contributor_id)?.full_name || 'Student contributor', contributor_id: row.contributor_id || undefined,
+        contributor_public: profiles.has(row.contributor_id), file_name: row.file_name || '', file_size: row.file_size_bytes || row.file_size,
         created_at: row.created_at, status: row.status === 'approved' ? 'approved' : row.status === 'rejected' ? 'rejected' : 'pending',
         file_url: row.storage_path ? await signedUrl('academic-resources', row.storage_path) : undefined,
       })));
@@ -61,7 +70,11 @@ export function useCampora() {
           reactionCounts.set(row.id, Number(count || 0));
         }));
       }
-      const mappedComments: CommunityComment[] = (commentResult.data || []).map((row: any) => ({ id: row.id, post_id: row.post_id, body: row.body, author_name: profiles.get(row.author_id)?.full_name || 'Community member', created_at: row.created_at }));
+      const mappedComments: CommunityComment[] = (commentResult.data || []).map((row: any) => ({
+        id: row.id, post_id: row.post_id, body: row.body,
+        author_name: profiles.get(row.author_id)?.full_name || 'Community member', author_id: row.author_id,
+        author_public: profiles.has(row.author_id), created_at: row.created_at,
+      }));
       const next: CamporaData = {
         announcements: (announcementResult.data || []).map((row: any) => ({ id: row.id, title: row.title, body: row.body, category: titleCase(row.category || 'general'), officially_verified: Boolean(row.is_official), created_at: row.published_at || row.created_at, expires_at: row.expires_at, sample: false })),
         resources: mappedResources,
@@ -69,7 +82,13 @@ export function useCampora() {
         opportunities: (opportunityResult.data || []).map((row: any) => ({ id: row.id, title: row.title, description: row.description || '', eligibility: row.eligibility || '', deadline: row.deadline, application_url: row.application_url, category: titleCase(row.category || 'other'), source: row.source, verification_status: row.status !== 'approved' ? 'unverified' : row.deadline && new Date(row.deadline).getTime() < Date.now() ? 'expired' : row.is_verified ? 'verified' : 'unverified' })),
         lostFound: mappedLostFound,
         listings: mappedListings,
-        posts: (postResult.data || []).map((row: any) => ({ id: row.id, body: row.body, author_name: profiles.get(row.author_id)?.full_name || 'Community member', department: departments.get(row.department_id) || undefined, created_at: row.created_at, reactions: reactionCounts.get(row.id) || 0, comments: mappedComments.filter((comment) => comment.post_id === row.id).length })),
+        posts: (postResult.data || []).map((row: any) => ({
+          id: row.id, body: row.body, feeling: row.feeling || undefined,
+          author_name: profiles.get(row.author_id)?.full_name || 'Community member', author_id: row.author_id,
+          author_public: profiles.has(row.author_id), department: departments.get(row.department_id) || profiles.get(row.author_id)?.department || undefined,
+          created_at: row.created_at, reactions: reactionCounts.get(row.id) || 0,
+          comments: mappedComments.filter((comment) => comment.post_id === row.id).length,
+        })),
         comments: mappedComments, tickets: [], supportReplies: [], feedback: [],
       };
       if (authRef.current) {
@@ -113,7 +132,7 @@ export function useCampora() {
   async function applySession(userId?: string, email?: string) {
     authRef.current = Boolean(userId);
     setAuthenticated(Boolean(userId));
-    if (!userId || !supabase) { setProfile({ full_name: '', role: 'student', is_verified_representative: false }); return; }
+    if (!userId || !supabase) { setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); return; }
     const [{ data: row }, { data: departments }, { data: faculties }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
       supabase.from('departments').select('id,name').limit(500),
@@ -122,16 +141,38 @@ export function useCampora() {
     const dept = (departments || []).find((item: any) => item.id === row?.department_id);
     const faculty = (faculties || []).find((item: any) => item.id === row?.faculty_id);
     const avatarUrl = row?.avatar_path ? await signedUrl('avatars', row.avatar_path) : undefined;
-    if (row) setProfile({ full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: levelText(row.academic_level), avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative) });
-    else setProfile({ full_name: '', email, role: 'student', is_verified_representative: false });
+    if (row) setProfile({ id: userId, full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: levelText(row.academic_level), username: row.username || undefined, bio: row.bio || undefined, is_public: row.is_public !== false, avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative) });
+    else setProfile({ id: userId, full_name: '', email, is_public: true, role: 'student', is_verified_representative: false });
+  }
+  async function loadPublicProfile(profileId: string): Promise<PublicStudentProfile> {
+    if (demo) {
+      const previewProfile = publicProfiles.find((item) => item.id === profileId);
+      if (previewProfile) return previewProfile;
+      throw new Error('That public student profile is not available in preview mode.');
+    }
+    if (!supabase) throw new Error('Student profiles require a database connection.');
+    const { data: rows, error } = await supabase.rpc('get_public_student_profiles', { p_profile_id: profileId, p_search: null, p_limit: 1 });
+    if (error) throw error;
+    const row = rows?.[0];
+    if (!row) throw new Error('This profile is private or no longer available.');
+    const avatarUrl = row.avatar_path ? await signedUrl('avatars', row.avatar_path) : undefined;
+    return {
+      id: row.id, full_name: row.full_name, username: row.username || undefined,
+      faculty: row.faculty || undefined, department: row.department || undefined,
+      level: levelText(row.academic_level), bio: row.bio || undefined, avatar_url: avatarUrl,
+    };
   }
 
   function updateData(updater: (current: CamporaData) => CamporaData) { setData((current) => { const next = updater(current); if (demo) safeSave(demoStorageKey, next); return next; }); }
 
   async function saveProfile(next: Profile) {
-    if (demo) { const local = { ...profile, ...next, role: 'student' as const, is_verified_representative: false }; setProfile(local); safeSave(profileKey, local); return; }
+    if (demo) { const local = { ...profile, ...next, username: next.username?.trim() || undefined, bio: next.bio?.trim() || undefined, is_public: next.is_public !== false, role: 'student' as const, is_verified_representative: false }; setProfile(local); safeSave(profileKey, local); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to save your profile.');
     const user = await currentUserId();
+    const username = next.username?.trim() || null;
+    const bio = next.bio?.trim() || null;
+    if (username && !/^[a-zA-Z0-9_]{3,30}$/.test(username)) throw new Error('Usernames must be 3–30 letters, numbers or underscores.');
+    if (bio && bio.length > 1000) throw new Error('Your bio must be 1,000 characters or fewer.');
     const facultyResult = next.faculty ? await supabase.from('faculties').select('id').ilike('name', next.faculty).eq('is_active', true).maybeSingle() : { data: null, error: null };
     if (facultyResult.error) throw facultyResult.error;
     if (next.faculty && !facultyResult.data) throw new Error('Choose a faculty from the official CAMPORA directory.');
@@ -142,9 +183,9 @@ export function useCampora() {
     if (departmentResult.error) throw departmentResult.error;
     if (next.department && !departmentResult.data) throw new Error('Choose a department from the official list for your faculty.');
     const level = next.level ? Number.parseInt(next.level, 10) / 100 : null;
-    const { error } = await supabase.from('profiles').update({ full_name: next.full_name, faculty_id: facultyResult.data?.id || null, department_id: departmentResult.data?.id || null, academic_level: Number.isFinite(level) ? level : null }).eq('id', user);
+    const { error } = await supabase.from('profiles').update({ full_name: next.full_name.trim(), username, bio, is_public: next.is_public !== false, faculty_id: facultyResult.data?.id || null, department_id: departmentResult.data?.id || null, academic_level: Number.isFinite(level) ? level : null }).eq('id', user);
     if (error) throw error;
-    setProfile({ ...profile, ...next });
+    setProfile({ ...profile, ...next, full_name: next.full_name.trim(), username: username || undefined, bio: bio || undefined, is_public: next.is_public !== false });
   }
 
   async function uploadProfilePhoto(file: File): Promise<string> {
@@ -188,17 +229,25 @@ export function useCampora() {
   }
   async function forgotPassword(email: string) { if (!supabase) throw new Error('Account recovery requires Supabase configuration.'); const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/?reset=1` }); if (error) throw error; }
   async function resetPassword(password: string) { if (!supabase) throw new Error('Password reset requires Supabase configuration.'); const { error } = await supabase.auth.updateUser({ password }); if (error) throw error; setRecoveryMode(false); }
-  async function logout() { if (supabase) { const { error } = await supabase.auth.signOut(); if (error) throw error; } setAuthenticated(false); authRef.current = false; setProfile({ full_name: '', role: 'student', is_verified_representative: false }); }
+  async function logout() { if (supabase) { const { error } = await supabase.auth.signOut(); if (error) throw error; } setAuthenticated(false); authRef.current = false; setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); }
 
-  async function createResource(draft: { title: string; course_code: string; faculty: string; department: string; level: string; file?: File }) {
-    if (demo) { const row: Resource = { id: makeId(), title: draft.title.trim(), course_code: draft.course_code.trim(), faculty: draft.faculty.trim(), department: draft.department.trim(), level: draft.level, contributor: profile.full_name || 'You', file_name: draft.file?.name, file_size: draft.file?.size, created_at: now(), status: 'pending' }; updateData((current) => ({ ...current, resources: [row, ...current.resources] })); return; }
+  async function createResource(draft: { title: string; course_code: string; faculty_id: string; department_id: string; level: string; file?: File }) {
+    const level = Number.parseInt(draft.level, 10) / 100;
+    const faculty = faculties.find((item) => item.id === draft.faculty_id);
+    const department = departments.find((item) => item.id === draft.department_id && item.faculty_id === draft.faculty_id);
+    if (!draft.title.trim() || !faculty || !department || ![1, 2, 3, 4].includes(level)) throw new Error('Choose a title, a 100–400 level, and a department from the selected faculty.');
+    if (draft.file && (draft.file.size < 1 || draft.file.size > 10 * 1024 * 1024)) throw new Error('Choose a resource file under 10 MB.');
+    if (demo) {
+      const row: Resource = { id: makeId(), title: draft.title.trim(), course_code: draft.course_code.trim(), faculty_id: faculty.id, department_id: department.id, faculty: faculty.name, department: department.name, level: draft.level, contributor: profile.full_name || 'You', contributor_id: profile.id, contributor_public: Boolean(profile.id), file_name: draft.file?.name, file_size: draft.file?.size, created_at: now(), status: 'pending' };
+      updateData((current) => ({ ...current, resources: [row, ...current.resources] })); return;
+    }
     if (!supabase || !authRef.current) throw new Error('Sign in to submit a resource.'); if (!navigator.onLine) throw new Error('You are offline. Connect to the internet before uploading a resource.');
     const user = await currentUserId(); const path = draft.file ? `${user}/${makeId()}-${safeFileName(draft.file.name)}` : null;
-    if (draft.file && path) { const { error } = await supabase.storage.from('academic-resources').upload(path, draft.file); if (error) throw error; }
-    const level = draft.level ? Number.parseInt(draft.level, 10) / 100 : null;
+    if (draft.file && path) { const { error } = await supabase.storage.from('academic-resources').upload(path, draft.file, { contentType: draft.file.type, cacheControl: '3600', upsert: false }); if (error) throw error; }
     const resourceType = fileType(draft.file?.name || '');
-    const { error } = await supabase.from('academic_resources').insert({ contributor_id: user, title: draft.title.trim(), course_code: draft.course_code.trim(), faculty: draft.faculty.trim() || null, department: draft.department.trim() || null, academic_level: Number.isFinite(level) ? level : null, description: null, resource_type: resourceType, storage_path: path || 'metadata-only', file_name: draft.file?.name.slice(-255) || 'No file attached', file_size_bytes: draft.file?.size || null, mime_type: draft.file?.type || null, status: 'pending' });
-    if (error) throw error; await refresh();
+    const { error } = await supabase.from('academic_resources').insert({ contributor_id: user, title: draft.title.trim(), course_code: draft.course_code.trim(), faculty_id: faculty.id, department_id: department.id, faculty: faculty.name, department: department.name, academic_level: level, description: null, resource_type: resourceType, storage_path: path || 'metadata-only', file_name: draft.file?.name.slice(-255) || 'No file attached', file_size_bytes: draft.file?.size || null, mime_type: draft.file?.type || null, status: 'pending' });
+    if (error) { if (path) await supabase.storage.from('academic-resources').remove([path]); throw error; }
+    await refresh();
   }
 
   async function createExploreItem(kind: 'lostFound' | 'listing', draft: ExploreDraft) {
@@ -229,14 +278,20 @@ export function useCampora() {
     await refresh();
   }
 
-  async function createPost(body: string) {
-    if (demo) { const item: CommunityPost = { id: makeId(), body, author_name: profile.full_name || 'You', department: profile.department, created_at: now(), reactions: 0, comments: 0 }; updateData((current) => ({ ...current, posts: [item, ...current.posts] })); return; }
+  async function createPost(body: string, feeling?: string) {
+    const text = body.trim();
+    if (!text || text.length > 1000) throw new Error('Posts must be between 1 and 1,000 characters.');
+    const allowedFeelings = ['Happy', 'Grateful', 'Excited', 'Motivated', 'Curious', 'Hopeful', 'Tired', 'Stressed', 'Anxious', 'Sad', 'Frustrated'];
+    if (feeling && !allowedFeelings.includes(feeling)) throw new Error('Choose a feeling from the list.');
+    if (demo) { const item: CommunityPost = { id: makeId(), body: text, feeling, author_name: profile.full_name || 'You', author_id: profile.id, department: profile.department, created_at: now(), reactions: 0, comments: 0 }; updateData((current) => ({ ...current, posts: [item, ...current.posts] })); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to post to the community.'); if (!navigator.onLine) throw new Error('You are offline. Connect before posting.');
-    const user = await currentUserId(); const { error } = await supabase.from('community_posts').insert({ author_id: user, body, status: 'approved' }); if (error) throw error; await refresh();
+    const user = await currentUserId(); const { error } = await supabase.from('community_posts').insert({ author_id: user, body: text, feeling: feeling || null, status: 'approved' }); if (error) throw error; await refresh();
   }
   async function createComment(postId: string, body: string) {
-    if (demo) { const comment: CommunityComment = { id: makeId(), post_id: postId, body, author_name: profile.full_name || 'You', created_at: now() }; updateData((current) => ({ ...current, comments: [...current.comments, comment], posts: current.posts.map((post) => post.id === postId ? { ...post, comments: post.comments + 1 } : post) })); return; }
-    if (!supabase || !authRef.current) throw new Error('Sign in to comment.'); if (!navigator.onLine) throw new Error('You are offline. Connect before commenting.'); const user = await currentUserId(); const { error } = await supabase.from('post_comments').insert({ post_id: postId, author_id: user, body, status: 'approved' }); if (error) throw error; await refresh();
+    const text = body.trim();
+    if (!text || text.length > 500) throw new Error('Replies must be between 1 and 500 characters.');
+    if (demo) { const comment: CommunityComment = { id: makeId(), post_id: postId, body: text, author_name: profile.full_name || 'You', author_id: profile.id, created_at: now() }; updateData((current) => ({ ...current, comments: [...current.comments, comment], posts: current.posts.map((post) => post.id === postId ? { ...post, comments: post.comments + 1 } : post) })); return; }
+    if (!supabase || !authRef.current) throw new Error('Sign in to reply.'); if (!navigator.onLine) throw new Error('You are offline. Connect before replying.'); const user = await currentUserId(); const { error } = await supabase.from('post_comments').insert({ post_id: postId, author_id: user, body: text, status: 'approved' }); if (error) throw error; await refresh();
   }
   async function react(postId: string) {
     if (demo) { updateData((current) => ({ ...current, posts: current.posts.map((post) => post.id === postId ? { ...post, reactions: post.reactions + 1 } : post) })); return; }
@@ -454,7 +509,7 @@ export function useCampora() {
     await refresh();
   }
 
-  return { data, profile, setProfile, faculties, departments, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
+  return { data, profile, setProfile, faculties, departments, publicProfiles, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
 }
 
 async function currentUserId() { if (!supabase) throw new Error('Database is not connected.'); const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw new Error('Please sign in again.'); return data.user.id; }
@@ -473,5 +528,5 @@ function slug(value: string) { return value.trim().toLowerCase().replaceAll('&',
 function levelText(value: unknown) { const level = Number(value); return Number.isFinite(level) && level > 0 ? `${level * 100} Level` : ''; }
 function normalizeTicketStatus(value: string): SupportTicket['status'] { const map: Record<string, SupportTicket['status']> = { open: 'Open', in_progress: 'In Progress', awaiting_response: 'Awaiting Response', resolved: 'Resolved', closed: 'Closed' }; return map[value] || 'Open'; }
 function readPreviewData(): CamporaData { try { const value = localStorage.getItem(demoStorageKey); if (value) return { ...demoData, ...JSON.parse(value) }; } catch { /* reset broken local preview data */ } return demoData; }
-function readProfile(): Profile { try { const value = localStorage.getItem(profileKey); if (value) return { ...JSON.parse(value), role: 'student', is_verified_representative: false }; } catch { /* use blank preview profile */ } return { full_name: '', role: 'student', is_verified_representative: false }; }
+function readProfile(): Profile { try { const value = localStorage.getItem(profileKey); if (value) { const saved = JSON.parse(value); return { ...saved, is_public: saved.is_public !== false, role: 'student', is_verified_representative: false }; } } catch { /* use blank preview profile */ } return { full_name: '', is_public: true, role: 'student', is_verified_representative: false }; }
 function safeSave(key: string, value: unknown) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* local preview still works for this tab if storage is full */ } }

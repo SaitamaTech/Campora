@@ -21,10 +21,24 @@ export interface Profile {
   faculty?: string;
   department?: string;
   level?: string;
+  username?: string;
+  bio?: string;
+  is_public?: boolean;
   avatar_path?: string;
   avatar_url?: string;
   role?: Role;
   is_verified_representative?: boolean;
+}
+
+export interface PublicStudentProfile {
+  id: string;
+  full_name: string;
+  username?: string;
+  faculty?: string;
+  department?: string;
+  level?: string;
+  bio?: string;
+  avatar_url?: string;
 }
 
 export interface Announcement {
@@ -42,10 +56,14 @@ export interface Resource {
   id: string;
   title: string;
   course_code: string;
+  faculty_id?: string;
+  department_id?: string;
   faculty: string;
   department: string;
   level: string;
   contributor: string;
+  contributor_id?: string;
+  contributor_public?: boolean;
   file_name?: string;
   file_url?: string;
   file_size?: number;
@@ -104,7 +122,10 @@ export interface Listing {
 export interface CommunityPost {
   id: string;
   body: string;
+  feeling?: string;
   author_name: string;
+  author_id?: string;
+  author_public?: boolean;
   department?: string;
   created_at: string;
   reactions: number;
@@ -117,6 +138,8 @@ export interface CommunityComment {
   post_id: string;
   body: string;
   author_name: string;
+  author_id?: string;
+  author_public?: boolean;
   created_at: string;
 }
 
