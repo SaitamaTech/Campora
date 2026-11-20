@@ -5,6 +5,7 @@ import { Academics } from './components/Academics';
 import { Explore } from './components/Explore';
 import { Community } from './components/Community';
 import { ProfilePage } from './components/Profile';
+import { Marketplace } from './components/Marketplace';
 import { PublicProfileModal } from './components/PublicProfileModal';
 import { SupportCenter } from './components/SupportCenter';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -30,6 +31,7 @@ export default function App() {
   const app = useCampora();
   const [page, setPage] = useState<Page>(() => parseHash(window.location.hash).page);
   const [exploreTab, setExploreTab] = useState<ExploreTab>(() => parseHash(window.location.hash).tab || 'campus');
+  const [marketplaceView, setMarketplaceView] = useState<'browse' | 'mine'>(() => parseHash(window.location.hash).marketplaceView || 'browse');
   const [special, setSpecial] = useState<'support' | 'admin' | null>(() => parseHash(window.location.hash).special ?? null);
   const [notificationInboxOpen, setNotificationInboxOpen] = useState(() => Boolean(parseHash(window.location.hash).notificationId));
   const [notificationIdToOpen, setNotificationIdToOpen] = useState(() => parseHash(window.location.hash).notificationId || '');
@@ -48,18 +50,20 @@ export default function App() {
   useEffect(() => {
     const onlineHandler = () => setOnline(true); const offlineHandler = () => setOnline(false);
     const installHandler = (event: Event) => { event.preventDefault(); setInstallEvent(event as InstallPromptEvent); };
-    const hashHandler = () => { const route = parseHash(window.location.hash); setPage(route.page); setExploreTab(route.tab || 'campus'); setSpecial(route.special ?? null); setNotificationIdToOpen(route.notificationId || ''); setNotificationInboxOpen(Boolean(route.notificationId)); };
-    window.addEventListener('online', onlineHandler); window.addEventListener('offline', offlineHandler); window.addEventListener('beforeinstallprompt', installHandler); window.addEventListener('hashchange', hashHandler);
-    return () => { window.removeEventListener('online', onlineHandler); window.removeEventListener('offline', offlineHandler); window.removeEventListener('beforeinstallprompt', installHandler); window.removeEventListener('hashchange', hashHandler); };
+    const hashHandler = () => { const route = parseHash(window.location.hash); setPage(route.page); setExploreTab(route.tab || 'campus'); setMarketplaceView(route.marketplaceView || 'browse'); setSpecial(route.special ?? null); setNotificationIdToOpen(route.notificationId || ''); setNotificationInboxOpen(Boolean(route.notificationId)); };
+    window.addEventListener('online', onlineHandler); window.addEventListener('offline', offlineHandler); window.addEventListener('beforeinstallprompt', installHandler); window.addEventListener('hashchange', hashHandler); window.addEventListener('popstate', hashHandler);
+    return () => { window.removeEventListener('online', onlineHandler); window.removeEventListener('offline', offlineHandler); window.removeEventListener('beforeinstallprompt', installHandler); window.removeEventListener('hashchange', hashHandler); window.removeEventListener('popstate', hashHandler); };
   }, []);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 4200); return () => window.clearTimeout(timer); }, [toast]);
 
   function navigate(nextPage: Page, nextTab?: ExploreTab) {
     setPage(nextPage); setSpecial(null); setMobileMenuOpen(false);
     if (nextPage === 'explore' && nextTab) setExploreTab(nextTab);
+    setMarketplaceView('browse');
     const suffix = nextPage === 'explore' && nextTab ? `explore/${nextTab}` : nextPage;
     if (window.location.hash !== `#${suffix}`) window.history.pushState({}, '', `#${suffix}`);
   }
+  function openMyAdvertisements() { setPage('explore'); setExploreTab('marketplace'); setMarketplaceView('mine'); setSpecial(null); setMobileMenuOpen(false); window.history.pushState({}, '', '#explore/marketplace/mine'); }
   function openSupport() { setSpecial('support'); setMobileMenuOpen(false); window.history.pushState({}, '', '#support'); }
   function openAdmin() { if (app.profile.role !== 'administrator') { setToast('Administrator access is required.'); return; } setSpecial('admin'); window.history.pushState({}, '', '#admin'); }
   function backFromSpecial() { setSpecial(null); setPage('profile'); window.history.pushState({}, '', '#profile'); }
@@ -105,9 +109,10 @@ export default function App() {
         {app.loading && <div className="loading-screen"><div className="loading-logo"><img src="/campora-icon.svg" alt="" /></div><div className="skeleton-line skeleton-wide" /><div className="skeleton-line" /><div className="skeleton-grid"><span /><span /><span /></div><p>Connecting to your campus space…</p></div>}
         {!app.loading && !special && page === 'home' && <Home data={app.data} profile={app.profile} demo={app.demo} onNavigate={navigate} onSupport={openSupport} />}
         {!app.loading && !special && page === 'academics' && <Academics resources={app.data.resources} faculties={app.faculties} departments={app.departments} demo={app.demo} onCreate={(draft) => safeAction(() => app.createResource(draft))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onViewProfile={(id) => void openStudentProfile(id)} onToast={setToast} />}
-        {!app.loading && !special && page === 'explore' && <Explore tab={exploreTab} onTab={setExploreTab} locations={app.data.locations} opportunities={app.data.opportunities} lostFound={app.data.lostFound} listings={app.data.listings} demo={app.demo} onCreate={(kind, draft) => safeAction(() => app.createExploreItem(kind, draft))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onContact={(kind, id, message) => safeAction(() => app.contactRequest(kind, id, message))} onToast={setToast} />}
+        {!app.loading && !special && page === 'explore' && exploreTab === 'marketplace' && <Marketplace authenticated={app.authenticated} demo={app.demo} profileName={app.profile.full_name} initialView={marketplaceView} onSignIn={() => navigate('profile')} onToast={setToast} />}
+        {!app.loading && !special && page === 'explore' && exploreTab !== 'marketplace' && <Explore tab={exploreTab} onTab={setExploreTab} locations={app.data.locations} opportunities={app.data.opportunities} lostFound={app.data.lostFound} listings={app.data.listings} demo={app.demo} onCreate={(kind, draft) => safeAction(() => app.createExploreItem(kind, draft))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onContact={(kind, id, message) => safeAction(() => app.contactRequest(kind, id, message))} onToast={setToast} />}
         {!app.loading && !special && page === 'community' && <Community posts={app.data.posts} comments={app.data.comments} profile={app.profile} publicProfiles={app.publicProfiles} demo={app.demo} onCreate={(body, feeling) => safeAction(() => app.createPost(body, feeling))} onComment={(id, body) => safeAction(() => app.createComment(id, body))} onReact={(id) => safeAction(() => app.react(id))} onReport={(type, id, reason) => safeAction(() => app.createReport(type, id, reason))} onViewProfile={(id) => void openStudentProfile(id)} onToast={setToast} />}
-        {!app.loading && !special && page === 'profile' && <ProfilePage key={app.recoveryMode ? 'recovery' : 'normal'} profile={app.profile} faculties={app.faculties} departments={app.departments} authenticated={app.authenticated} configured={app.configured} demo={app.demo} recoveryMode={app.recoveryMode} onSave={(profile) => safeAction(() => app.saveProfile(profile))} onUploadAvatar={(file) => safeAction(() => app.uploadProfilePhoto(file))} onAuth={(mode, values) => safeAction(() => app.authenticate(mode, values))} onGoogleAuth={() => safeAction(() => app.signInWithGoogle())} onForgot={(email) => safeAction(() => app.forgotPassword(email))} onResetPassword={(password) => safeAction(() => app.resetPassword(password))} onLogout={() => safeAction(() => app.logout())} onSupport={openSupport} onAdmin={openAdmin} />}
+        {!app.loading && !special && page === 'profile' && <ProfilePage key={app.recoveryMode ? 'recovery' : 'normal'} profile={app.profile} faculties={app.faculties} departments={app.departments} authenticated={app.authenticated} configured={app.configured} demo={app.demo} recoveryMode={app.recoveryMode} onSave={(profile) => safeAction(() => app.saveProfile(profile))} onUploadAvatar={(file) => safeAction(() => app.uploadProfilePhoto(file))} onAuth={(mode, values) => safeAction(() => app.authenticate(mode, values))} onGoogleAuth={() => safeAction(() => app.signInWithGoogle())} onForgot={(email) => safeAction(() => app.forgotPassword(email))} onResetPassword={(password) => safeAction(() => app.resetPassword(password))} onLogout={() => safeAction(() => app.logout())} onSupport={openSupport} onAdmin={openAdmin} onMyAdvertisements={openMyAdvertisements} />}
         {!app.loading && special === 'support' && <SupportCenter tickets={app.data.tickets} replies={app.data.supportReplies} feedback={app.data.feedback} demo={app.demo} authenticated={app.authenticated} onBack={backFromSpecial} onCreateTicket={(draft) => safeAction(() => app.createSupportTicket(draft))} onCloseTicket={(id) => safeAction(() => app.closeTicket(id))} onFeedback={(draft) => safeAction(() => app.submitFeedback(draft))} onToast={setToast} />}
         {!app.loading && special === 'admin' && app.profile.role === 'administrator' && <AdminDashboard onBack={backFromSpecial} onLoad={() => app.loadAdminSnapshot()} onReview={(kind, id, approved) => safeAction(() => app.adminReview(kind, id, approved))} onPublishAnnouncement={(draft) => safeAction(() => app.adminPublishAnnouncement(draft))} onAddLocation={(draft) => safeAction(() => app.adminAddLocation(draft))} onAddFaculty={(name) => safeAction(() => app.adminAddFaculty(name))} onAddDepartment={(draft) => safeAction(() => app.adminAddDepartment(draft))} onPublishOpportunity={(draft) => safeAction(() => app.adminPublishOpportunity(draft))} onReplyTicket={(ticketId, message, status) => safeAction(() => app.adminReplyTicket(ticketId, message, status))} onSetRole={(id, role) => safeAction(() => app.adminSetRole(id, role))} onSetActive={(id, active) => safeAction(() => app.adminSetActive(id, active))} onResolveReport={(id, status, notes) => safeAction(() => app.adminResolveReport(id, status, notes))} onToast={setToast} />}
         {!app.loading && special === 'admin' && app.profile.role !== 'administrator' && <div className="access-denied"><Shield size={25} /><h2>Administrator access required</h2><p>Administrative tasks are protected by both the app and database policies.</p><button className="small-link" onClick={backFromSpecial}>Return to your profile <ArrowUpRight size={14} /></button></div>}
@@ -125,14 +130,14 @@ export default function App() {
   </div>;
 }
 
-function parseHash(hash: string): { page: Page; tab?: ExploreTab; special?: 'support' | 'admin'; notificationId?: string } {
+function parseHash(hash: string): { page: Page; tab?: ExploreTab; marketplaceView?: 'browse' | 'mine'; special?: 'support' | 'admin'; notificationId?: string } {
   const parts = hash.replace(/^#/, '').split('/');
   if (parts[0] === 'notification' && parts[1]) return { page: 'home', notificationId: parts[1] };
   if (parts[0] === 'support') return { page: 'profile', special: 'support' };
   if (parts[0] === 'admin') return { page: 'profile', special: 'admin' };
   const page: Page = ['academics','explore','community','profile','home'].includes(parts[0]) ? parts[0] as Page : 'home';
   const tab = ['campus','opportunities','lost-found','marketplace'].includes(parts[1]) ? parts[1] as ExploreTab : undefined;
-  return { page, tab };
+  return { page, tab, marketplaceView: parts[2] === 'mine' ? 'mine' : 'browse' };
 }
 function searchData(data: ReturnType<typeof useCampora>['data'], query: string): SearchResult[] {
   const q = query.trim().toLowerCase(); if (q.length < 2) return [];

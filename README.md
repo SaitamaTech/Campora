@@ -27,6 +27,10 @@ Without Supabase settings, CAMPORA starts in a clearly labeled local preview mod
 
 The migrations create CAMPORA's core tables, RLS policies, private Storage buckets, and scoped object policies. Public reads are limited to approved content; user submissions, support tickets and protected contact requests are owner-scoped. Moderation states and official/verified account fields are protected from self-approval.
 
+### Marketplace upgrade
+
+For an existing CAMPORA database, apply `supabase/migrations/202611200014_marketplace_classifieds.sql` and then `supabase/migrations/202611200015_marketplace_privilege_hardening.sql`, after the existing CAMPORA schema and Storage policies are in place. These extend the legacy marketplace table, migrate its category and image metadata, seed the product and service categories, and add private contact preferences, reports, moderation, search, and least-privilege grants. Deploy the updated app only after both migrations succeed. The marketplace is a classified-ad service: buyers and sellers arrange any transaction independently; CAMPORA does not handle payments or delivery. Do not apply these migrations to an unrelated or empty Supabase project.
+
 ## Build and deploy
 
 ```bash

@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
-import { ArrowUpRight, BadgeCheck, Bell, BookOpen, Camera, CircleHelp, LogIn, LogOut, Mail, Settings2, ShieldCheck, UserRound, Users } from 'lucide-react';
+import { ArrowUpRight, BadgeCheck, Bell, BookOpen, Camera, CircleHelp, LogIn, LogOut, Mail, Settings2, ShieldCheck, ShoppingBag, UserRound, Users } from 'lucide-react';
 import type { Profile, Role } from '../lib/types';
 import { Button, Modal, SectionTitle, Tag } from './ui';
 
@@ -7,11 +7,11 @@ type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
 type FacultyOption = { id: string; name: string };
 type DepartmentOption = { id: string; name: string; faculty_id: string };
 
-export function ProfilePage({ profile, faculties, departments, authenticated, configured, demo, recoveryMode, onSave, onUploadAvatar, onAuth, onForgot, onResetPassword, onLogout, onSupport, onAdmin, onGoogleAuth }: {
+export function ProfilePage({ profile, faculties, departments, authenticated, configured, demo, recoveryMode, onSave, onUploadAvatar, onAuth, onForgot, onResetPassword, onLogout, onSupport, onAdmin, onMyAdvertisements, onGoogleAuth }: {
   profile: Profile; faculties: FacultyOption[]; departments: DepartmentOption[]; authenticated: boolean; configured: boolean; demo: boolean;
   recoveryMode: boolean;
   onSave: (profile: Profile) => Promise<void>; onUploadAvatar: (file: File) => Promise<string>; onAuth: (mode: 'signin' | 'signup', values: { email: string; password: string; full_name: string }) => Promise<string | void>; onGoogleAuth: () => Promise<void>;
-  onForgot: (email: string) => Promise<void>; onResetPassword: (password: string) => Promise<void>; onLogout: () => Promise<void>; onSupport: () => void; onAdmin: () => void;
+  onForgot: (email: string) => Promise<void>; onResetPassword: (password: string) => Promise<void>; onLogout: () => Promise<void>; onSupport: () => void; onAdmin: () => void; onMyAdvertisements: () => void;
 }) {
   const [edit, setEdit] = useState(false);
   const [authOpen, setAuthOpen] = useState(recoveryMode);
@@ -74,6 +74,7 @@ export function ProfilePage({ profile, faculties, departments, authenticated, co
           <Button variant="secondary" onClick={openEdit}><Settings2 size={15} /> Edit profile</Button>
         </div>
         <section className="panel settings-panel"><SectionTitle eyebrow="PROFILE DETAILS" title="Your information" action={<button className="small-link" onClick={openEdit}>Edit <ArrowUpRight size={14} /></button>} /><div className="profile-fields"><ProfileField icon={<UserRound size={15} />} label="Full name" value={profile.full_name || 'Not set'} /><ProfileField icon={<UserRound size={15} />} label="Username" value={profile.username ? `@${profile.username}` : 'Not set'} /><ProfileField icon={<Mail size={15} />} label="Email address" value={profile.email || 'Not connected'} /><ProfileField icon={<BookOpen size={15} />} label="Faculty" value={profile.faculty || 'Not set'} /><ProfileField icon={<Users size={15} />} label="Department" value={profile.department || 'Not set'} /><ProfileField icon={<Bell size={15} />} label="Academic level" value={profile.level || 'Not set'} /><ProfileField icon={<Users size={15} />} label="Profile visibility" value={profile.is_public === false ? 'Private' : 'Visible to students'} /></div>{profile.bio && <p className="profile-bio-summary">{profile.bio}</p>}</section>
+        {authenticated && <button className="profile-marketplace-card" onClick={onMyAdvertisements}><span className="profile-marketplace-icon"><ShoppingBag size={19} /></span><span><b>My Advertisements</b><small>Manage your products and services, update availability, or preview your ads.</small></span><ArrowUpRight size={17} /></button>}
         {role === 'administrator' && <button className="admin-entry-card" onClick={onAdmin}><span className="admin-entry-icon"><ShieldCheck size={18} /></span><span><b>Administration dashboard</b><small>Manage content, reports and support requests.</small></span><ArrowUpRight size={16} /></button>}
       </section>
       <aside className="profile-aside">

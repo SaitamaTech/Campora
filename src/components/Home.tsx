@@ -1,14 +1,14 @@
 import { ArrowUpRight, BookOpen, CalendarDays, Compass, GraduationCap, MapPin, Megaphone, Plus, ShieldCheck, ShoppingBag, Sparkles, Users, CircleHelp } from 'lucide-react';
-import type { CamporaData, Page, Profile } from '../lib/types';
+import type { CamporaData, ExploreTab, Page, Profile } from '../lib/types';
 import { EmptyState, SectionTitle, Tag } from './ui';
 
-export function Home({ data, profile, demo, onNavigate, onSupport }: { data: CamporaData; profile: Profile; demo: boolean; onNavigate: (page: Page) => void; onSupport: () => void }) {
+export function Home({ data, profile, demo, onNavigate, onSupport }: { data: CamporaData; profile: Profile; demo: boolean; onNavigate: (page: Page, tab?: ExploreTab) => void; onSupport: () => void }) {
   const greetingName = profile.full_name?.trim().split(' ')[0] || 'student';
   const shortcuts = [
     { title: 'Study library', caption: 'Find class materials', icon: BookOpen, page: 'academics' as Page, color: 'peach' },
     { title: 'Campus guide', caption: 'Explore verified places', icon: MapPin, page: 'explore' as Page, color: 'lilac' },
     { title: 'Student community', caption: 'Join the conversation', icon: Users, page: 'community' as Page, color: 'mint' },
-    { title: 'Student marketplace', caption: 'Buy and sell safely', icon: ShoppingBag, page: 'explore' as Page, color: 'gold' },
+    { title: 'Student marketplace', caption: 'Buy and sell safely', icon: ShoppingBag, page: 'explore' as Page, tab: 'marketplace' as ExploreTab, color: 'gold' },
   ];
 
   return <div className="page-stack">
@@ -40,7 +40,7 @@ export function Home({ data, profile, demo, onNavigate, onSupport }: { data: Cam
 
     <section className="section-block">
       <SectionTitle eyebrow="MAKE IT YOURS" title="Your campus shortcuts" action={<button className="text-action" onClick={() => onNavigate('explore')}>Explore all <ArrowUpRight size={15} /></button>} />
-      <div className="shortcut-grid">{shortcuts.map(({ title, caption, icon: Icon, page, color }) => <button key={title} className="shortcut-card" onClick={() => onNavigate(page)}><span className={`shortcut-icon icon-${color}`}><Icon size={19} /></span><span className="shortcut-copy"><strong>{title}</strong><small>{caption}</small></span><ArrowUpRight className="shortcut-arrow" size={16} /></button>)}</div>
+      <div className="shortcut-grid">{shortcuts.map(({ title, caption, icon: Icon, page, tab, color }) => <button key={title} className="shortcut-card" onClick={() => onNavigate(page, tab)}><span className={`shortcut-icon icon-${color}`}><Icon size={19} /></span><span className="shortcut-copy"><strong>{title}</strong><small>{caption}</small></span><ArrowUpRight className="shortcut-arrow" size={16} /></button>)}</div>
     </section>
 
     <div className="home-columns">

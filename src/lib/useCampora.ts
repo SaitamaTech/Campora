@@ -36,7 +36,7 @@ export function useCampora() {
         supabase.from('campus_locations').select('*').order('name').limit(100),
         supabase.from('opportunities').select('*').order('created_at', { ascending: false }).limit(60),
         supabase.from('lost_found_items').select('*').order('created_at', { ascending: false }).limit(60),
-        supabase.from('marketplace_listings').select('*').order('created_at', { ascending: false }).limit(60),
+        supabase.from('marketplace_listings').select('id,seller_id,title,description,category,price,currency_code,image_paths,status,is_sold,created_at,updated_at,listing_type,category_id,price_type,listing_status,seller_display_name,location,landmark,is_featured,moderation_reason').eq('status', 'approved').eq('listing_status', 'active').order('created_at', { ascending: false }).limit(60),
         supabase.from('community_posts').select('*').order('created_at', { ascending: false }).limit(40),
         supabase.from('post_comments').select('*').order('created_at', { ascending: true }).limit(300),
         supabase.rpc('get_public_student_profiles', { p_profile_id: null, p_search: null, p_limit: 500 }),
@@ -372,7 +372,6 @@ export function useCampora() {
       client.from('campus_locations').select('id,name,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('opportunities').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('lost_found_items').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('marketplace_listings').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('community_posts').select('id,title,body,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('post_comments').select('id,body,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('faculties').select('id,name').order('name').limit(200),
@@ -380,7 +379,7 @@ export function useCampora() {
     ]);
     const failure = results.find((result) => result.error)?.error;
     if (failure) throw failure;
-    const [users, reports, feedback, tickets, resources, announcements, locations, opportunities, lostFound, listings, posts, comments, faculties, departments] = results;
+    const [users, reports, feedback, tickets, resources, announcements, locations, opportunities, lostFound, posts, comments, faculties, departments] = results;
     const queue: AdminSnapshot['queue'] = [];
     const appendQueue = (kind: string, rows: any[], titleOf: (row: any) => string) => {
       for (const row of rows || []) queue.push({ id: row.id, kind, title: titleOf(row) || 'Untitled submission', created_at: row.created_at, status: row.status });
@@ -390,7 +389,6 @@ export function useCampora() {
     appendQueue('campus_locations', locations.data || [], (row) => row.name);
     appendQueue('opportunities', opportunities.data || [], (row) => row.title);
     appendQueue('lost_found_items', lostFound.data || [], (row) => row.title);
-    appendQueue('marketplace_listings', listings.data || [], (row) => row.title);
     appendQueue('community_posts', posts.data || [], (row) => row.title || row.body);
     appendQueue('post_comments', comments.data || [], (row) => row.body);
     queue.sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -416,7 +414,6 @@ export function useCampora() {
       case 'campus_locations': result = await client.from('campus_locations').update({ status, is_active: approved }).eq('id', id); break;
       case 'opportunities': result = await client.from('opportunities').update({ status, is_verified: approved, reviewed_by: userId, reviewed_at: now() }).eq('id', id); break;
       case 'lost_found_items': result = await client.from('lost_found_items').update({ status }).eq('id', id); break;
-      case 'marketplace_listings': result = await client.from('marketplace_listings').update({ status }).eq('id', id); break;
       case 'community_posts': result = await client.from('community_posts').update({ status }).eq('id', id); break;
       case 'post_comments': result = await client.from('post_comments').update({ status }).eq('id', id); break;
       default: throw new Error('This content type is not available for review.');
