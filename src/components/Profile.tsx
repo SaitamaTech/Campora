@@ -5,10 +5,10 @@ import { Button, Modal, SectionTitle, Tag } from './ui';
 
 type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
 
-export function ProfilePage({ profile, authenticated, configured, demo, recoveryMode, onSave, onAuth, onForgot, onResetPassword, onLogout, onSupport, onAdmin }: {
+export function ProfilePage({ profile, authenticated, configured, demo, recoveryMode, onSave, onAuth, onForgot, onResetPassword, onLogout, onSupport, onAdmin, onGoogleAuth }: {
   profile: Profile; authenticated: boolean; configured: boolean; demo: boolean;
   recoveryMode: boolean;
-  onSave: (profile: Profile) => Promise<void>; onAuth: (mode: 'signin' | 'signup', values: { email: string; password: string; full_name: string }) => Promise<string | void>;
+  onSave: (profile: Profile) => Promise<void>; onAuth: (mode: 'signin' | 'signup', values: { email: string; password: string; full_name: string }) => Promise<string | void>; onGoogleAuth: () => Promise<void>;
   onForgot: (email: string) => Promise<void>; onResetPassword: (password: string) => Promise<void>; onLogout: () => Promise<void>; onSupport: () => void; onAdmin: () => void;
 }) {
   const [edit, setEdit] = useState(false);
@@ -30,6 +30,7 @@ export function ProfilePage({ profile, authenticated, configured, demo, recovery
     if (authMode === 'reset') { if (password !== confirmPassword) throw new Error('Your passwords do not match.'); await onResetPassword(password); setNotice('Password updated. You can now sign in.'); setAuthMode('signin'); setPassword(''); setConfirmPassword(''); return; }
     const result = await onAuth(authMode, { email, password, full_name: authName }); if (result) { setNotice(result); if (authMode === 'signup') { setAuthMode('signin'); setPassword(''); } } else setAuthOpen(false);
   } catch (err) { setError(err instanceof Error ? err.message : 'Authentication could not be completed.'); } finally { setBusy(false); } }
+  async function submitGoogleAuth() { setBusy(true); setError(''); setNotice(''); try { await onGoogleAuth(); } catch (err) { setError(err instanceof Error ? err.message : 'Google sign-in could not be started.'); } finally { setBusy(false); } }
 
   const role: Role = profile.role || 'student';
   return <div className="page-stack">
@@ -53,9 +54,10 @@ export function ProfilePage({ profile, authenticated, configured, demo, recovery
 
     {authOpen && <Modal title={authMode === 'signup' ? 'Create your account' : authMode === 'forgot' ? 'Recover your account' : authMode === 'reset' ? 'Set a new password' : 'Welcome back'} onClose={() => { setAuthOpen(false); setError(''); setNotice(''); }}><form className="form-stack" onSubmit={submitAuth}>
       {!configured && <div className="form-note"><ShieldCheck size={16} />Preview mode is active. Account creation will be available after a Supabase project is connected. You can still explore and edit a local preview profile.</div>}
+      {configured && (authMode === 'signin' || authMode === 'signup') && <><button type="button" className="google-auth-button" onClick={() => void submitGoogleAuth()} disabled={busy}><GoogleMark />{busy ? 'Please wait…' : 'Continue with Google'}</button><div className="auth-divider" aria-hidden="true"><span>or continue with email</span></div></>}
       {authMode === 'signup' && <label>Full name<input required maxLength={100} value={authName} onChange={(e) => setAuthName(e.target.value)} placeholder="Your name" /></label>}
       {authMode !== 'reset' && <label>Email address<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" /></label>}
-      {(authMode === 'signin' || authMode === 'signup' || authMode === 'reset') && <label>{authMode === 'reset' ? 'New password' : 'Password'}<input required minLength={8} type="password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" /></label>}
+      {(authMode === 'signin' || authMode === 'signup' || authMode === 'reset') && <label>{authMode === 'reset' ? 'New password' : 'Password'}<input required minLength={authMode === 'signin' ? undefined : 8} type="password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={authMode === 'signin' ? 'Enter your password' : 'At least 8 characters'} /></label>}
       {authMode === 'reset' && <label>Confirm new password<input required minLength={8} type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat password" /></label>}
       {notice && <p className="form-success" role="status">{notice}</p>}{error && <p className="form-error" role="alert">{error}</p>}
       <Button type="submit" disabled={busy || !configured}>{busy ? 'Please wait…' : authMode === 'signup' ? 'Create account' : authMode === 'forgot' ? 'Send recovery link' : authMode === 'reset' ? 'Update password' : 'Sign in'}</Button>
@@ -66,3 +68,4 @@ export function ProfilePage({ profile, authenticated, configured, demo, recovery
 
 function ProfileField({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <div className="profile-field"><span className="profile-field-icon">{icon}</span><span><small>{label}</small><b>{value}</b></span></div>; }
 function roleLabel(role: Role) { return role === 'administrator' ? 'Administrator' : role === 'moderator' ? 'Moderator' : role === 'contributor' ? 'Trusted contributor' : 'Student'; }
+function GoogleMark() { return <svg aria-hidden="true" viewBox="0 0 48 48" width="18" height="18"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.93c-.58 2.96-2.26 5.48-4.72 7.18l7.62 5.91c4.45-4.11 7.15-10.16 7.15-17.56Z"/><path fill="#FBBC05" d="M10.53 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.9 23.9 0 0 0 0 21.56l7.98-6.19Z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.89l-7.62-5.91c-2.12 1.42-4.84 2.27-8.28 2.27-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z"/></svg>; }
