@@ -21,7 +21,7 @@ export default defineConfig({
         icons: [{ src: '/campora-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,ico,png,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,ico,png,jpg,woff2}'],
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
         clientsClaim: true,
