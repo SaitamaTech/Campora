@@ -50,7 +50,7 @@ export function useCampora() {
       const visibleProfiles: PublicStudentProfile[] = (profileResult.data || []).map((row: any) => ({
         id: row.id, full_name: row.full_name, username: row.username || undefined,
         faculty: row.faculty || undefined, department: row.department || undefined,
-        level: levelText(row.academic_level), bio: row.bio || undefined,
+        level: row.academic_level_label || levelText(row.academic_level), bio: row.bio || undefined,
       }));
       setPublicProfiles(visibleProfiles);
       const profiles = new Map(visibleProfiles.map((row) => [row.id, row]));
@@ -162,7 +162,7 @@ export function useCampora() {
     const dept = (departments || []).find((item: any) => item.id === row?.department_id);
     const faculty = (faculties || []).find((item: any) => item.id === row?.faculty_id);
     const avatarUrl = row?.avatar_path ? await signedUrl('avatars', row.avatar_path) : undefined;
-    if (row) setProfile({ id: userId, full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: levelText(row.academic_level), username: row.username || undefined, bio: row.bio || undefined, is_public: row.is_public !== false, avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative) });
+    if (row) setProfile({ id: userId, full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: row.academic_level_label || levelText(row.academic_level), username: row.username || undefined, bio: row.bio || undefined, is_public: row.is_public !== false, avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative) });
     else setProfile({ id: userId, full_name: '', email, is_public: true, role: 'student', is_verified_representative: false });
   }
   async function loadPublicProfile(profileId: string): Promise<PublicStudentProfile> {
@@ -180,7 +180,7 @@ export function useCampora() {
     return {
       id: row.id, full_name: row.full_name, username: row.username || undefined,
       faculty: row.faculty || undefined, department: row.department || undefined,
-      level: levelText(row.academic_level), bio: row.bio || undefined, avatar_url: avatarUrl,
+      level: row.academic_level_label || levelText(row.academic_level), bio: row.bio || undefined, avatar_url: avatarUrl,
     };
   }
 
@@ -203,10 +203,14 @@ export function useCampora() {
       : { data: null, error: null };
     if (departmentResult.error) throw departmentResult.error;
     if (next.department && !departmentResult.data) throw new Error('Choose a department from the official list for your faculty.');
-    const level = next.level ? Number.parseInt(next.level, 10) / 100 : null;
-    const { error } = await supabase.from('profiles').update({ full_name: next.full_name.trim(), username, bio, is_public: next.is_public !== false, faculty_id: facultyResult.data?.id || null, department_id: departmentResult.data?.id || null, academic_level: Number.isFinite(level) ? level : null }).eq('id', user);
+    const selectedLevel = next.level?.trim() || '';
+    const isPostgraduate = selectedLevel === 'Postgraduate';
+    const level = isPostgraduate ? null : selectedLevel ? Number.parseInt(selectedLevel, 10) / 100 : null;
+    if (selectedLevel && !isPostgraduate && ![1, 2, 3, 4, 5].includes(level || 0)) throw new Error('Choose a supported academic level.');
+    const { data: savedProfile, error } = await supabase.from('profiles').update({ full_name: next.full_name.trim(), username, bio, is_public: next.is_public !== false, faculty_id: facultyResult.data?.id || null, department_id: departmentResult.data?.id || null, academic_level: level, academic_level_label: isPostgraduate ? 'Postgraduate' : null }).eq('id', user).select('id').maybeSingle();
     if (error) throw error;
-    setProfile({ ...profile, ...next, full_name: next.full_name.trim(), username: username || undefined, bio: bio || undefined, is_public: next.is_public !== false });
+    if (!savedProfile) throw new Error('Your profile was not saved. The account could not be found; please sign in again and retry.');
+    setProfile({ ...profile, ...next, full_name: next.full_name.trim(), username: username || undefined, bio: bio || undefined, level: selectedLevel || undefined, is_public: next.is_public !== false });
   }
 
   async function uploadProfilePhoto(file: File): Promise<string> {
@@ -223,12 +227,17 @@ export function useCampora() {
     const path = `${user}/${makeId()}.${extension}`;
     const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { contentType: file.type, cacheControl: '3600', upsert: false });
     if (uploadError) throw uploadError;
-    const { error: profileError } = await supabase.from('profiles').update({ avatar_path: path }).eq('id', user);
-    if (profileError) { await supabase.storage.from('avatars').remove([path]); throw profileError; }
+    const { data: savedProfile, error: profileError } = await supabase.from('profiles').update({ avatar_path: path }).eq('id', user).select('id').maybeSingle();
+    if (profileError || !savedProfile) {
+      await supabase.storage.from('avatars').remove([path]);
+      if (profileError) throw profileError;
+      throw new Error('Your profile photo was not saved. Please sign in again and retry.');
+    }
     const { data: signed, error: signedError } = await supabase.storage.from('avatars').createSignedUrl(path, 3600);
     if (signedError || !signed?.signedUrl) {
-      await supabase.from('profiles').update({ avatar_path: oldPath || null }).eq('id', user);
+      const { data: restoredProfile, error: restoreError } = await supabase.from('profiles').update({ avatar_path: oldPath || null }).eq('id', user).select('id').maybeSingle();
       await supabase.storage.from('avatars').remove([path]);
+      if (restoreError || !restoredProfile) throw new Error('The secure photo preview failed and CAMPORA could not restore the previous profile photo. Please contact support.');
       throw signedError || new Error('The profile photo uploaded, but its secure preview could not be created.');
     }
     setProfile({ ...profile, avatar_path: path, avatar_url: signed.signedUrl });
@@ -306,13 +315,13 @@ export function useCampora() {
     if (feeling && !allowedFeelings.includes(feeling)) throw new Error('Choose a feeling from the list.');
     if (demo) { const item: CommunityPost = { id: makeId(), body: text, feeling, author_name: profile.full_name || 'You', author_id: profile.id, department: profile.department, created_at: now(), reactions: 0, comments: 0 }; updateData((current) => ({ ...current, posts: [item, ...current.posts] })); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to post to the community.'); if (!navigator.onLine) throw new Error('You are offline. Connect before posting.');
-    const user = await currentUserId(); const { error } = await supabase.from('community_posts').insert({ author_id: user, body: text, feeling: feeling || null, status: 'approved' }); if (error) throw error; await refresh();
+    const user = await currentUserId(); const { data: createdPost, error } = await supabase.from('community_posts').insert({ author_id: user, body: text, feeling: feeling || null, status: 'approved' }).select('id').single(); if (error) throw error; if (!createdPost?.id) throw new Error('CAMPORA could not confirm that your post was saved.'); await refresh();
   }
   async function createComment(postId: string, body: string) {
     const text = body.trim();
     if (!text || text.length > 500) throw new Error('Replies must be between 1 and 500 characters.');
     if (demo) { const comment: CommunityComment = { id: makeId(), post_id: postId, body: text, author_name: profile.full_name || 'You', author_id: profile.id, created_at: now() }; updateData((current) => ({ ...current, comments: [...current.comments, comment], posts: current.posts.map((post) => post.id === postId ? { ...post, comments: post.comments + 1 } : post) })); return; }
-    if (!supabase || !authRef.current) throw new Error('Sign in to reply.'); if (!navigator.onLine) throw new Error('You are offline. Connect before replying.'); const user = await currentUserId(); const { error } = await supabase.from('post_comments').insert({ post_id: postId, author_id: user, body: text, status: 'approved' }); if (error) throw error; await refresh();
+    if (!supabase || !authRef.current) throw new Error('Sign in to reply.'); if (!navigator.onLine) throw new Error('You are offline. Connect before replying.'); const user = await currentUserId(); const { data: createdComment, error } = await supabase.from('post_comments').insert({ post_id: postId, author_id: user, body: text, status: 'approved' }).select('id').single(); if (error) throw error; if (!createdComment?.id) throw new Error('CAMPORA could not confirm that your reply was saved.'); await refresh();
   }
   async function react(postId: string) {
     if (demo) { updateData((current) => ({ ...current, posts: current.posts.map((post) => post.id === postId ? { ...post, reactions: post.reactions + 1 } : post) })); return; }

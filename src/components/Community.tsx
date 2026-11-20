@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
-import { ArrowUpRight, Flag, Heart, MessageCircle, Search, Send, Users } from 'lucide-react';
+import { ArrowUpRight, Flag, Heart, LogIn, MessageCircle, Search, Send, Users } from 'lucide-react';
 import type { CommunityComment, CommunityPost, Profile, PublicStudentProfile } from '../lib/types';
 import { Button, EmptyState, Modal, SectionTitle, Tag } from './ui';
 
 const feelings = ['Happy', 'Grateful', 'Excited', 'Motivated', 'Curious', 'Hopeful', 'Tired', 'Stressed', 'Anxious', 'Sad', 'Frustrated'];
 
-export function Community({ posts, comments, profile, publicProfiles, demo, onCreate, onComment, onReact, onReport, onViewProfile, onToast }: {
-  posts: CommunityPost[]; comments: CommunityComment[]; profile: Profile; publicProfiles: PublicStudentProfile[]; demo: boolean;
+export function Community({ posts, comments, profile, publicProfiles, demo, authenticated, onSignIn, onCreate, onComment, onReact, onReport, onViewProfile, onToast }: {
+  posts: CommunityPost[]; comments: CommunityComment[]; profile: Profile; publicProfiles: PublicStudentProfile[]; demo: boolean; authenticated: boolean;
+  onSignIn: () => void;
   onCreate: (body: string, feeling?: string) => Promise<void>; onComment: (postId: string, body: string) => Promise<void>; onReact: (postId: string) => Promise<void>;
   onReport: (type: string, id: string, reason: string) => Promise<void>; onViewProfile: (profileId: string) => void; onToast: (message: string) => void;
 }) {
@@ -51,9 +52,11 @@ export function Community({ posts, comments, profile, publicProfiles, demo, onCr
       <section className="community-main">
         <form className="compose-card" onSubmit={createPost}>
           <div className="compose-heading"><span className="avatar">{profile.avatar_url ? <img src={profile.avatar_url} alt="" aria-hidden="true" /> : profile.full_name?.slice(0, 1) || 'S'}</span><div><strong>What’s on your mind?</strong><small>Text-only posts keep the community fast and lightweight.</small></div></div>
-          <textarea value={body} maxLength={1000} onChange={(e) => setBody(e.target.value)} placeholder="Share an update, ask a question or tell your campus how you’re feeling…" rows={3} aria-label="Write a post" />
-          <div className="compose-footer"><span>{body.length}/1000</span><label className="feeling-select"><span>Feeling</span><select value={feeling} onChange={(e) => setFeeling(e.target.value)} aria-label="Add a feeling to your post"><option value="">Add a feeling</option>{feelings.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><Button type="submit" disabled={!body.trim() || busy}><Send size={14} />{busy ? 'Posting…' : 'Post'}</Button></div>
-          <p className="text-only-note">No image uploads in posts or replies. Profile photos stay separate.</p>
+          {!demo && !authenticated ? <div className="form-note community-signin-note"><span>Sign in to publish posts and replies to the student community.</span><Button type="button" variant="secondary" onClick={onSignIn}><LogIn size={14} /> Sign in</Button></div> : <>
+            <textarea value={body} maxLength={1000} onChange={(e) => setBody(e.target.value)} placeholder="Share an update, ask a question or tell your campus how you’re feeling…" rows={3} aria-label="Write a post" />
+            <div className="compose-footer"><span>{body.length}/1000</span><label className="feeling-select"><span>Feeling</span><select value={feeling} onChange={(e) => setFeeling(e.target.value)} aria-label="Add a feeling to your post"><option value="">Add a feeling</option>{feelings.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><Button type="submit" disabled={!body.trim() || busy}><Send size={14} />{busy ? 'Posting…' : 'Post'}</Button></div>
+            <p className="text-only-note">No image uploads in posts or replies. Profile photos stay separate.</p>
+          </>}
         </form>
         <div className="feed-heading"><SectionTitle eyebrow="STUDENT VOICES" title={`${filter === 'My department' ? 'Department' : 'Community'} feed`} /><select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter community feed"><option>All posts</option>{profile.department && <option>My department</option>}</select></div>
         {sorted.length ? <div className="feed-list">{sorted.map((post) => {

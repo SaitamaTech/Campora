@@ -318,8 +318,9 @@ export async function saveMarketplaceListing(draft: MarketplaceDraft): Promise<s
   let listingId = draft.id;
   if (listingId) {
     const { seller_id: _sellerId, ...updateFields } = fields;
-    const { error } = await supabaseClient.from('marketplace_listings').update(updateFields).eq('id', listingId).eq('seller_id', userId);
+    const { data: updatedListing, error } = await supabaseClient.from('marketplace_listings').update(updateFields).eq('id', listingId).eq('seller_id', userId).select('id').maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updatedListing) throw new Error('This advertisement could not be found or you no longer have permission to edit it. Nothing was saved.');
   } else {
     const { data, error } = await supabaseClient.from('marketplace_listings').insert(fields).select('id').single();
     if (error) throw new Error(error.message);
