@@ -6,10 +6,14 @@ import { Button, EmptyState, SectionTitle, Tag } from './ui';
 type OpportunityDraft = { title: string; description: string; eligibility: string; deadline: string; application_url: string; category: string; source: string; verified: boolean };
 const emptyOpportunity = (): OpportunityDraft => ({ title: '', description: '', eligibility: '', deadline: '', application_url: '', category: 'scholarship', source: '', verified: false });
 
-export function AdminAcademicSetup({ snapshot, onAddFaculty, onAddDepartment, onPublishOpportunity, onRefresh, onToast }: {
+export function AdminAcademicSetup({ snapshot, onAddFaculty, onAddDepartment, onSetFacultyActive, onSetDepartmentActive, onRenameFaculty, onRenameDepartment, onPublishOpportunity, onRefresh, onToast }: {
   snapshot: AdminSnapshot;
   onAddFaculty: (name: string) => Promise<void>;
   onAddDepartment: (draft: { name: string; faculty_id: string }) => Promise<void>;
+  onSetFacultyActive?: (id: string, active: boolean) => Promise<void>;
+  onSetDepartmentActive?: (id: string, active: boolean) => Promise<void>;
+  onRenameFaculty?: (id: string, name: string) => Promise<void>;
+  onRenameDepartment?: (id: string, name: string) => Promise<void>;
   onPublishOpportunity: (draft: OpportunityDraft) => Promise<void>;
   onRefresh: () => Promise<void>;
   onToast: (message: string) => void;
@@ -43,13 +47,13 @@ export function AdminAcademicSetup({ snapshot, onAddFaculty, onAddDepartment, on
         </form>
         <form className="form-stack panel admin-form" onSubmit={addDepartment}>
           <SectionTitle eyebrow="DEPARTMENT DIRECTORY" title="Add a department" />
-          <label>Faculty<select required value={department.faculty_id} onChange={(e) => setDepartment({ ...department, faculty_id: e.target.value })}><option value="">Choose a faculty</option>{snapshot.faculties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Faculty<select required value={department.faculty_id} onChange={(e) => setDepartment({ ...department, faculty_id: e.target.value })}><option value="">Choose a faculty</option>{snapshot.faculties.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Department name<input required maxLength={160} value={department.name} onChange={(e) => setDepartment({ ...department, name: e.target.value })} placeholder="Use the confirmed university name" /></label>
           <Button type="submit" disabled={busy === 'department' || snapshot.faculties.length === 0}><Plus size={15} />{busy === 'department' ? 'Saving…' : 'Add department'}</Button>
         </form>
         <section className="panel admin-form academic-directory-list">
           <SectionTitle eyebrow="CURRENT SETUP" title={`${snapshot.faculties.length} faculties · ${snapshot.departments.length} departments`} />
-          {snapshot.faculties.length ? <ul>{snapshot.faculties.map((item) => <li key={item.id}><b>{item.name}</b><small>{snapshot.departments.filter((entry) => entry.faculty_id === item.id).map((entry) => entry.name).join(' · ') || 'No departments added yet'}</small></li>)}</ul> : <EmptyState title="No academic records yet" text="Create a faculty here after confirming its official name." icon={<GraduationCap size={18} />} />}
+          {snapshot.faculties.length ? <ul>{snapshot.faculties.map((item) => <li key={item.id}><div className="academic-directory-entry"><span><b>{item.name}</b><small>{item.is_active ? 'Active' : 'Inactive'}</small></span><div>{onRenameFaculty && <button type="button" className="text-action" onClick={() => { const next = window.prompt('Rename this faculty', item.name); if (next?.trim()) void run(`faculty-rename-${item.id}`, 'Faculty renamed.', () => onRenameFaculty(item.id, next)); }}>Rename</button>}{onSetFacultyActive && <button type="button" className="text-action" onClick={() => void run(`faculty-active-${item.id}`, item.is_active ? 'Faculty deactivated.' : 'Faculty activated.', () => onSetFacultyActive(item.id, !item.is_active))}>{item.is_active ? 'Deactivate' : 'Activate'}</button>}</div></div>{snapshot.departments.filter((entry) => entry.faculty_id === item.id).map((entry) => <div className="academic-directory-entry academic-department-entry" key={entry.id}><span><b>{entry.name}</b><small>{entry.is_active ? 'Active department' : 'Inactive department'}</small></span><div>{onRenameDepartment && <button type="button" className="text-action" onClick={() => { const next = window.prompt('Rename this department', entry.name); if (next?.trim()) void run(`department-rename-${entry.id}`, 'Department renamed.', () => onRenameDepartment(entry.id, next)); }}>Rename</button>}{onSetDepartmentActive && <button type="button" className="text-action" onClick={() => void run(`department-active-${entry.id}`, entry.is_active ? 'Department deactivated.' : 'Department activated.', () => onSetDepartmentActive(entry.id, !entry.is_active))}>{entry.is_active ? 'Deactivate' : 'Activate'}</button>}</div></div>)}</li>)}</ul> : <EmptyState title="No academic records yet" text="Create a faculty here after confirming its official name." icon={<GraduationCap size={18} />} />}
         </section>
       </div>
       <div className="admin-setup-column">

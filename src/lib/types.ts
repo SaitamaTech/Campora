@@ -31,6 +31,7 @@ export interface Profile {
   avatar_path?: string;
   avatar_url?: string;
   role?: Role;
+  is_active?: boolean;
   is_verified_representative?: boolean;
   followers_count?: number;
 }

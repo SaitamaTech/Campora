@@ -7,9 +7,9 @@ import {
   type MarketplaceAdminData, type MarketplaceCategory, type MarketplaceType,
 } from '../lib/marketplace';
 
-type Props = { onToast: (message: string) => void; onSetSellerActive: (userId: string, active: boolean) => Promise<void> };
+type Props = { isAdmin: boolean; onToast: (message: string) => void; onSetSellerActive: (userId: string, active: boolean) => Promise<void> };
 
-export function MarketplaceAdmin({ onToast, onSetSellerActive }: Props) {
+export function MarketplaceAdmin({ isAdmin, onToast, onSetSellerActive }: Props) {
   const [data, setData] = useState<MarketplaceAdminData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -100,14 +100,16 @@ export function MarketplaceAdmin({ onToast, onSetSellerActive }: Props) {
         {openReports.length ? <div className="marketplace-report-list">{openReports.map((report) => {
           const listing = listings.find((item) => item.id === report.listing_id);
           const sellerId = report.seller_id || listing?.seller_id;
-          return <article className="panel marketplace-report" key={report.id}><div className="marketplace-admin-card-head"><div><Tag tone="warning">{report.report_type} report · {report.status}</Tag><h3>{report.listing_title}</h3><small>{new Date(report.created_at).toLocaleString()}</small></div><CircleAlert size={19} /></div><p>{report.reason}</p><label>Resolution note<textarea rows={2} value={notes[report.id] || report.resolution_notes || ''} onChange={(event) => setNotes({ ...notes, [report.id]: event.target.value })} placeholder="What was reviewed or changed?" /></label><div className="marketplace-admin-actions"><Button variant="secondary" onClick={() => void updateReport(report.id, 'reviewing')} disabled={busy === report.id}>Mark reviewing</Button>{sellerId && report.report_type === 'seller' && <Button variant="ghost" onClick={() => void suspendSeller(sellerId)} disabled={busy === sellerId}>Suspend seller</Button>}<Button onClick={() => void updateReport(report.id, 'resolved')} disabled={busy === report.id}>Resolve</Button><Button variant="ghost" onClick={() => void updateReport(report.id, 'dismissed')} disabled={busy === report.id}>Dismiss</Button></div></article>;
+          return <article className="panel marketplace-report" key={report.id}><div className="marketplace-admin-card-head"><div><Tag tone="warning">{report.report_type} report · {report.status}</Tag><h3>{report.listing_title}</h3><small>{new Date(report.created_at).toLocaleString()}</small></div><CircleAlert size={19} /></div><p>{report.reason}</p><label>Resolution note<textarea rows={2} value={notes[report.id] || report.resolution_notes || ''} onChange={(event) => setNotes({ ...notes, [report.id]: event.target.value })} placeholder="What was reviewed or changed?" /></label><div className="marketplace-admin-actions"><Button variant="secondary" onClick={() => void updateReport(report.id, 'reviewing')} disabled={busy === report.id}>Mark reviewing</Button>{isAdmin && sellerId && report.report_type === 'seller' && <Button variant="ghost" onClick={() => void suspendSeller(sellerId)} disabled={busy === sellerId}>Suspend seller</Button>}<Button onClick={() => void updateReport(report.id, 'resolved')} disabled={busy === report.id}>Resolve</Button><Button variant="ghost" onClick={() => void updateReport(report.id, 'dismissed')} disabled={busy === report.id}>Dismiss</Button></div></article>;
         })}</div> : <div className="panel"><EmptyState title="No open marketplace reports" text="New advertisement and seller reports will appear here." icon={<ShieldCheck size={18} />} /></div>}
       </section>
 
+      {isAdmin && (
       <section className="section-block"><SectionTitle eyebrow="MARKETPLACE TAXONOMY" title="Manage categories" />
         <form className="panel marketplace-category-form" onSubmit={saveCategory}><label>Category name<input required minLength={2} maxLength={120} value={category.name} onChange={(event) => setCategory({ ...category, name: event.target.value })} placeholder="e.g. Design and creative" /></label><label>Listing type<select value={category.listing_type} onChange={(event) => setCategory({ ...category, listing_type: event.target.value as MarketplaceType })}><option value="product">Product</option><option value="service">Service</option></select></label><Button type="submit" disabled={busy === 'category'}><Plus size={14} /> {busy === 'category' ? 'Saving…' : category.id ? 'Update category' : 'Add category'}</Button>{category.id && <Button variant="secondary" onClick={() => setCategory({ name: '', listing_type: 'product', is_active: true })}>Cancel edit</Button>}</form>
         <div className="marketplace-category-groups">{(['product', 'service'] as const).map((type) => <div className="panel marketplace-category-group" key={type}><SectionTitle title={`${type === 'product' ? 'Product' : 'Service'} categories`} />{groupedCategories[type].length ? <div className="marketplace-category-list">{groupedCategories[type].map((item) => <div className="marketplace-category-row" key={item.id}><span><b>{item.name}</b><small>{item.slug} · {item.is_active ? 'Active' : 'Inactive'}</small></span><div><button className="text-action" onClick={() => setCategory({ id: item.id, name: item.name, listing_type: item.listing_type, is_active: item.is_active })}>Edit</button><button className="icon-button" onClick={() => void removeCategory(item)} disabled={busy === item.id} aria-label={`Remove ${item.name}`}><Trash2 size={14} /></button></div></div>)}</div> : <EmptyState title="No categories yet" text="Add a product or service category above." icon={<Plus size={18} />} />}</div>)}</div>
       </section>
+      )}
     </>}
   </div>;
 }

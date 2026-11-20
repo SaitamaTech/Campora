@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CamporaData, CamporaNotification, CommunityComment, CommunityPost, ExploreDraft, Profile, ProfileFollowStats, PublicStudentProfile, Resource, Role, SupportTicket } from './types';
-import type { AdminSnapshot } from '../components/AdminDashboard';
+import type { CamporaData, CamporaNotification, CommunityComment, CommunityPost, ExploreDraft, Profile, ProfileFollowStats, PublicStudentProfile, Resource, SupportTicket } from './types';
+import * as adminApi from './admin';
 import { demoData, demoStorageKey } from './demoData';
 import { supabase, supabaseConfigured } from './supabase';
 
@@ -24,19 +24,26 @@ export function useCampora() {
   const [followingLoading, setFollowingLoading] = useState(false);
   const [followingError, setFollowingError] = useState('');
   const [notifications, setNotifications] = useState<CamporaNotification[]>([]);
+  const [platformControls, setPlatformControls] = useState({ maintenance_mode: false, registration_enabled: true, content_moderation_enabled: true });
   const authRef = useRef(false);
   const authUserIdRef = useRef<string | null>(null);
   const demo = !supabaseConfigured;
+
+  const assertPlatformWriteAllowed = useCallback((contentSubmission = false) => {
+    if (profile.role === 'administrator' || profile.role === 'moderator') return;
+    if (platformControls.maintenance_mode) throw new Error('CAMPORA is in maintenance mode. Please try again later.');
+    if (contentSubmission && !platformControls.content_moderation_enabled) throw new Error('Student content submissions are temporarily paused.');
+  }, [profile.role, platformControls.content_moderation_enabled, platformControls.maintenance_mode]);
 
   const refresh = useCallback(async () => {
     if (!supabase) return;
     const requestingUserId = authUserIdRef.current;
     setSyncError('');
     try {
-      const [announcementResult, resourceResult, locationResult, opportunityResult, lostResult, listingResult, postResult, commentResult, profileResult, facultyResult, departmentResult] = await Promise.all([
+      const [announcementResult, resourceResult, locationResult, opportunityResult, lostResult, listingResult, postResult, commentResult, profileResult, facultyResult, departmentResult, controlsResult] = await Promise.all([
         supabase.from('announcements').select('*').eq('status', 'approved').not('published_at', 'is', null).order('created_at', { ascending: false }).limit(60),
         supabase.from('academic_resources').select('*').order('created_at', { ascending: false }).limit(60),
-        supabase.from('campus_locations').select('*').order('name').limit(100),
+        supabase.from('campus_locations').select('*').eq('status', 'approved').eq('is_active', true).order('name').limit(100),
         supabase.from('opportunities').select('*').eq('status', 'approved').order('created_at', { ascending: false }).limit(60),
         supabase.from('lost_found_items').select('*').eq('status', 'approved').order('created_at', { ascending: false }).limit(60),
         supabase.from('marketplace_listings').select('id,seller_id,title,description,category,price,currency_code,image_paths,status,is_sold,created_at,updated_at,listing_type,category_id,price_type,listing_status,seller_display_name,location,landmark,is_featured,moderation_reason').eq('status', 'approved').eq('listing_status', 'active').order('created_at', { ascending: false }).limit(60),
@@ -45,9 +52,15 @@ export function useCampora() {
         supabase.rpc('get_public_student_profiles', { p_profile_id: null, p_search: null, p_limit: 500 }),
         supabase.from('faculties').select('id,name').limit(200),
         supabase.from('departments').select('id,name,faculty_id').limit(500),
+        supabase.rpc('get_public_platform_controls'),
       ]);
-      const firstError = [announcementResult, resourceResult, locationResult, opportunityResult, lostResult, listingResult, postResult, commentResult, profileResult, facultyResult, departmentResult].find((result) => result.error)?.error;
+      const firstError = [announcementResult, resourceResult, locationResult, opportunityResult, lostResult, listingResult, postResult, commentResult, profileResult, facultyResult, departmentResult, controlsResult].find((result) => result.error)?.error;
       if (firstError) throw firstError;
+      setPlatformControls({
+        maintenance_mode: controlsResult.data?.maintenance_mode === true,
+        registration_enabled: controlsResult.data?.registration_enabled !== false,
+        content_moderation_enabled: controlsResult.data?.content_moderation_enabled !== false,
+      });
       setFaculties((facultyResult.data || []).map((row: any) => ({ id: row.id, name: row.name })));
       setDepartments((departmentResult.data || []).map((row: any) => ({ id: row.id, name: row.name, faculty_id: row.faculty_id })));
       const visibleProfiles: PublicStudentProfile[] = (profileResult.data || []).map((row: any) => ({
@@ -121,12 +134,13 @@ export function useCampora() {
 
   const markNotificationRead = useCallback(async (id: string) => {
     if (!supabase || !authRef.current) throw new Error('Sign in to open your notifications.');
+    assertPlatformWriteAllowed();
     const { data: marked, error } = await supabase.rpc('mark_campora_notification_read', { p_notification_id: id });
     if (error) throw error;
     if (marked !== true) throw new Error('This notification is no longer available.');
     const readAt = now();
     setNotifications((current) => current.map((notification) => notification.id === id ? { ...notification, is_read: true, read_at: notification.read_at || readAt } : notification));
-  }, []);
+  }, [assertPlatformWriteAllowed]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -151,6 +165,7 @@ export function useCampora() {
   }, [refresh]);
 
   async function applySession(userId?: string, email?: string) {
+    const previousUserId = authUserIdRef.current;
     const nextUserId = userId || null;
     if (authUserIdRef.current !== nextUserId) {
       setNotifications([]);
@@ -171,8 +186,9 @@ export function useCampora() {
     const dept = (departments || []).find((item: any) => item.id === row?.department_id);
     const faculty = (faculties || []).find((item: any) => item.id === row?.faculty_id);
     const avatarUrl = row?.avatar_path ? await signedUrl('avatars', row.avatar_path) : undefined;
-    if (row) setProfile({ id: userId, full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: row.academic_level_label || levelText(row.academic_level), username: row.username || undefined, bio: row.bio || undefined, is_public: row.is_public !== false, avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative), followers_count: followStats?.[0] ? Number(followStats[0].followers_count ?? 0) : undefined });
+    if (row) setProfile({ id: userId, full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: row.academic_level_label || levelText(row.academic_level), username: row.username || undefined, bio: row.bio || undefined, is_public: row.is_public !== false, avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_active: row.is_active === true, is_verified_representative: Boolean(row.verified_representative), followers_count: followStats?.[0] ? Number(followStats[0].followers_count ?? 0) : undefined });
     else setProfile({ id: userId, full_name: '', email, is_public: true, role: 'student', is_verified_representative: false });
+    if (previousUserId !== userId && row?.is_active && ['administrator', 'moderator'].includes(row.role || '')) void adminApi.recordAdminLogin();
   }
   async function loadPublicProfile(profileId: string): Promise<PublicStudentProfile> {
     if (demo) {
@@ -215,6 +231,7 @@ export function useCampora() {
   }, []);
 
   async function setProfileFollow(profileId: string, shouldFollow: boolean): Promise<ProfileFollowStats> {
+    assertPlatformWriteAllowed();
     if (demo) throw new Error('Following other students requires a connected account.');
     if (!supabase || !authRef.current) throw new Error('Sign in to follow students.');
     if (!navigator.onLine) throw new Error('You are offline. Connect before updating follows.');
@@ -259,6 +276,7 @@ export function useCampora() {
   function updateData(updater: (current: CamporaData) => CamporaData) { setData((current) => { const next = updater(current); if (demo) safeSave(demoStorageKey, next); return next; }); }
 
   async function saveProfile(next: Profile) {
+    assertPlatformWriteAllowed();
     if (demo) { const local = { ...profile, ...next, username: next.username?.trim() || undefined, bio: next.bio?.trim() || undefined, is_public: next.is_public !== false, role: 'student' as const, is_verified_representative: false }; setProfile(local); safeSave(profileKey, local); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to save your profile.');
     const user = await currentUserId();
@@ -289,6 +307,7 @@ export function useCampora() {
   }
 
   async function uploadProfilePhoto(file: File): Promise<string> {
+    assertPlatformWriteAllowed();
     if (demo) throw new Error('Profile photo uploads are available after secure sign-in is connected.');
     if (!supabase || !authRef.current) throw new Error('Sign in to upload your profile photo.');
     if (!navigator.onLine) throw new Error('You are offline. Connect to the internet before uploading a profile photo.');
@@ -323,6 +342,8 @@ export function useCampora() {
   async function authenticate(mode: 'signin' | 'signup', values: { email: string; password: string; full_name: string }) {
     if (!supabase) throw new Error('Account authentication requires Supabase configuration.');
     if (mode === 'signin') { const { error } = await supabase.auth.signInWithPassword({ email: values.email, password: values.password }); if (error) throw error; return; }
+    const controls = await adminApi.loadPublicPlatformControls();
+    if (!controls.registration_enabled) throw new Error('New CAMPORA registrations are temporarily disabled.');
     const { data: signUpData, error } = await supabase.auth.signUp({ email: values.email, password: values.password, options: { data: { full_name: values.full_name }, emailRedirectTo: window.location.origin } });
     if (error) throw error;
     if (!signUpData.session) return 'Check your email for a verification link before signing in.';
@@ -337,6 +358,7 @@ export function useCampora() {
   async function logout() { if (supabase) { const { error } = await supabase.auth.signOut(); if (error) throw error; } setAuthenticated(false); authRef.current = false; setFollowingProfiles([]); setFollowingError(''); setFollowingLoading(false); setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); }
 
   async function createResource(draft: { title: string; course_code: string; faculty_id: string; department_id: string; level: string; file?: File }) {
+    assertPlatformWriteAllowed(true);
     const level = Number.parseInt(draft.level, 10) / 100;
     const faculty = faculties.find((item) => item.id === draft.faculty_id);
     const department = departments.find((item) => item.id === draft.department_id && item.faculty_id === draft.faculty_id);
@@ -356,6 +378,7 @@ export function useCampora() {
   }
 
   async function createExploreItem(kind: 'lostFound' | 'opportunity' | 'listing', draft: ExploreDraft) {
+    assertPlatformWriteAllowed(true);
     const title = draft.title?.trim();
     const description = draft.description?.trim();
     if (!title || !description) throw new Error('Add a title and description first.');
@@ -409,6 +432,7 @@ export function useCampora() {
   }
 
   async function createPost(body: string, feeling?: string) {
+    assertPlatformWriteAllowed(true);
     const text = body.trim();
     if (!text || text.length > 1000) throw new Error('Posts must be between 1 and 1,000 characters.');
     const allowedFeelings = ['Happy', 'Grateful', 'Excited', 'Motivated', 'Curious', 'Hopeful', 'Tired', 'Stressed', 'Anxious', 'Sad', 'Frustrated'];
@@ -418,6 +442,7 @@ export function useCampora() {
     const user = await currentUserId(); const { data: createdPost, error } = await supabase.from('community_posts').insert({ author_id: user, body: text, feeling: feeling || null, status: 'approved' }).select('id').single(); if (error) throw error; if (!createdPost?.id) throw new Error('CAMPORA could not confirm that your post was saved.'); await refresh();
   }
   async function deletePost(postId: string) {
+    assertPlatformWriteAllowed();
     if (demo) {
       const post = data.posts.find((item) => item.id === postId);
       if (!post) return;
@@ -434,12 +459,14 @@ export function useCampora() {
     await refresh();
   }
   async function createComment(postId: string, body: string) {
+    assertPlatformWriteAllowed(true);
     const text = body.trim();
     if (!text || text.length > 500) throw new Error('Replies must be between 1 and 500 characters.');
     if (demo) { const comment: CommunityComment = { id: makeId(), post_id: postId, body: text, author_name: profile.full_name || 'You', author_id: profile.id, created_at: now() }; updateData((current) => ({ ...current, comments: [...current.comments, comment], posts: current.posts.map((post) => post.id === postId ? { ...post, comments: post.comments + 1 } : post) })); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to reply.'); if (!navigator.onLine) throw new Error('You are offline. Connect before replying.'); const user = await currentUserId(); const { data: createdComment, error } = await supabase.from('post_comments').insert({ post_id: postId, author_id: user, body: text, status: 'approved' }).select('id').single(); if (error) throw error; if (!createdComment?.id) throw new Error('CAMPORA could not confirm that your reply was saved.'); await refresh();
   }
   async function react(postId: string) {
+    assertPlatformWriteAllowed();
     if (demo) { updateData((current) => ({ ...current, posts: current.posts.map((post) => post.id === postId ? { ...post, reactions: post.reactions + 1 } : post) })); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to react to a post.'); if (!navigator.onLine) throw new Error('You are offline. Connect before reacting.'); const user = await currentUserId();
     const { data: existing, error: readError } = await supabase.from('post_reactions').select('id').eq('post_id', postId).eq('user_id', user).maybeSingle(); if (readError) throw readError;
@@ -447,10 +474,12 @@ export function useCampora() {
     if (result.error) throw result.error; await refresh();
   }
   async function createReport(type: string, id: string, reason: string) {
+    assertPlatformWriteAllowed();
     if (demo) { updateData((current) => current); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to report content.'); if (!navigator.onLine) throw new Error('You are offline. Connect before sending a report.'); const user = await currentUserId(); const { error } = await supabase.from('user_reports').insert({ reporter_id: user, resource_type: type, resource_id: id, reason }); if (error) throw error;
   }
   async function contactRequest(kind: 'seller' | 'poster', id: string, message: string) {
+    assertPlatformWriteAllowed();
     if (demo) return;
     if (!supabase || !authRef.current) throw new Error('Sign in to send a private contact request.'); if (!navigator.onLine) throw new Error('You are offline. Connect before sending a request.'); const user = await currentUserId();
     const targetType = kind === 'seller' ? 'marketplace_listing' : 'lost_found_item';
@@ -461,221 +490,22 @@ export function useCampora() {
     const { error } = await supabase.from('contact_requests').insert({ requester_id: user, recipient_id: recipientId, target_type: targetType, target_id: id, private_message: message }); if (error) throw error;
   }
   async function createSupportTicket(input: { subject: string; category: string; message: string; attachment?: File }) {
+    assertPlatformWriteAllowed();
     if (demo) { const reference = `CP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`; const ticket: SupportTicket = { id: makeId(), reference, subject: input.subject, category: input.category, message: input.message, status: 'Open', created_at: now() }; updateData((current) => ({ ...current, tickets: [ticket, ...current.tickets] })); return reference; }
     if (!supabase || !authRef.current) throw new Error('Sign in to submit a support request.'); if (!navigator.onLine) throw new Error('You are offline. Connect before submitting a support request.'); const user = await currentUserId();
     const attachmentPaths: string[] = [];
     if (input.attachment) { const path = `${user}/${makeId()}-${safeFileName(input.attachment.name)}`; const { error: uploadError } = await supabase.storage.from('support-attachments').upload(path, input.attachment); if (uploadError) throw uploadError; attachmentPaths.push(path); }
     const { data: row, error } = await supabase.from('support_tickets').insert({ requester_id: user, category: slug(input.category), subject: input.subject, description: input.message, attachment_paths: attachmentPaths }).select('ticket_reference').single(); if (error) throw error; await refresh(); return row.ticket_reference;
   }
-  async function closeTicket(id: string) { if (demo) { updateData((current) => ({ ...current, tickets: current.tickets.map((ticket) => ticket.id === id ? { ...ticket, status: 'Closed' } : ticket) })); return; } if (!supabase || !authRef.current) throw new Error('Sign in to close a support ticket.'); const { error } = await supabase.from('support_tickets').update({ status: 'closed', closed_at: now() }).eq('id', id); if (error) throw error; await refresh(); }
+  async function closeTicket(id: string) { assertPlatformWriteAllowed(); if (demo) { updateData((current) => ({ ...current, tickets: current.tickets.map((ticket) => ticket.id === id ? { ...ticket, status: 'Closed' } : ticket) })); return; } if (!supabase || !authRef.current) throw new Error('Sign in to close a support ticket.'); const { error } = await supabase.from('support_tickets').update({ status: 'closed', closed_at: now() }).eq('id', id); if (error) throw error; await refresh(); }
   async function submitFeedback(input: { kind: string; message: string; anonymous: boolean }) {
+    assertPlatformWriteAllowed();
     if (demo) { const item = { id: makeId(), kind: input.kind, message: input.message, anonymous: input.anonymous, created_at: now() }; updateData((current) => ({ ...current, feedback: [item, ...current.feedback] })); return; }
     if (!supabase) throw new Error('Feedback storage requires Supabase configuration.'); if (!navigator.onLine) throw new Error('You are offline. Connect before sending feedback.'); const user = authRef.current && !input.anonymous ? await currentUserId() : null;
     const { error } = await supabase.from('feedback').insert({ submitter_id: user, feedback_type: slug(input.kind), message: input.message, is_anonymous: input.anonymous }); if (error) throw error;
   }
 
-  async function requireAdministrator() {
-    if (!supabase || !authRef.current) throw new Error('Sign in with an administrator account to continue.');
-    const client = supabase;
-    const userId = await currentUserId();
-    const { data: record, error } = await client.from('profiles').select('role,is_active').eq('id', userId).maybeSingle();
-    if (error) throw error;
-    if (record?.role !== 'administrator' || !record.is_active) throw new Error('This action is restricted to active CAMPORA administrators.');
-    return { client, userId };
-  }
-
-  async function loadAdminSnapshot(): Promise<AdminSnapshot> {
-    const { client } = await requireAdministrator();
-    if (!navigator.onLine) throw new Error('Connect to the internet to load the admin workspace.');
-    const results = await Promise.all([
-      client.from('profiles').select('id,full_name,role,is_active,created_at').order('created_at', { ascending: false }).limit(500),
-      client.from('user_reports').select('id,resource_type,resource_id,reason,status,created_at').order('created_at', { ascending: false }).limit(200),
-      client.from('feedback').select('id,feedback_type,message,is_anonymous,created_at').order('created_at', { ascending: false }).limit(200),
-      client.from('support_tickets').select('*').order('created_at', { ascending: false }).limit(200),
-      client.from('academic_resources').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('announcements').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('campus_locations').select('id,name,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('opportunities').select('id,title,description,eligibility,category,deadline,application_url,source,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('lost_found_items').select('id,title,description,item_type,location_description,occurred_on,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('community_posts').select('id,title,body,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('post_comments').select('id,body,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('faculties').select('id,name').order('name').limit(200),
-      client.from('departments').select('id,name,faculty_id').order('name').limit(500),
-    ]);
-    const failure = results.find((result) => result.error)?.error;
-    if (failure) throw failure;
-    const [users, reports, feedback, tickets, resources, announcements, locations, opportunities, lostFound, posts, comments, faculties, departments] = results;
-    const queue: AdminSnapshot['queue'] = [];
-    const appendQueue = (kind: string, rows: any[], titleOf: (row: any) => string, detailsOf?: (row: any) => string[]) => {
-      for (const row of rows || []) {
-        const details = (detailsOf?.(row) || []).filter(Boolean);
-        queue.push({ id: row.id, kind, title: titleOf(row) || 'Untitled submission', created_at: row.created_at, status: row.status, details, canApprove: kind !== 'opportunities' || Boolean(row.source?.trim()) });
-      }
-    };
-    appendQueue('academic_resources', resources.data || [], (row) => row.title);
-    appendQueue('announcements', announcements.data || [], (row) => row.title);
-    appendQueue('campus_locations', locations.data || [], (row) => row.name);
-    appendQueue('opportunities', opportunities.data || [], (row) => row.title, (row) => [
-      `Description: ${String(row.description || '').slice(0, 1000)}`,
-      row.category ? `Category: ${titleCase(row.category)}` : '',
-      row.eligibility ? `Eligibility: ${String(row.eligibility).slice(0, 500)}` : '',
-      row.deadline ? `Deadline: ${new Date(row.deadline).toLocaleDateString()}` : '',
-      row.source ? `Source / organizer: ${row.source}` : 'Source / organizer: Not provided',
-      row.application_url ? `Application link: ${row.application_url}` : '',
-    ]);
-    appendQueue('lost_found_items', lostFound.data || [], (row) => row.title, (row) => [
-      `Type: ${row.item_type === 'found' ? 'Found' : 'Lost'}`,
-      row.location_description ? `Location: ${String(row.location_description).slice(0, 300)}` : '',
-      row.occurred_on ? `Approximate date: ${row.occurred_on}` : '',
-      `Description: ${String(row.description || '').slice(0, 1000)}`,
-    ]);
-    appendQueue('community_posts', posts.data || [], (row) => row.title || row.body);
-    appendQueue('post_comments', comments.data || [], (row) => row.body);
-    queue.sort((a, b) => b.created_at.localeCompare(a.created_at));
-    return {
-      users: (users.data || []).map((row: any) => ({ id: row.id, full_name: row.full_name || 'CAMPORA student', role: row.role as Role, is_active: Boolean(row.is_active), created_at: row.created_at })),
-      reports: (reports.data || []).map((row: any) => ({ id: row.id, resource_type: row.resource_type, resource_id: row.resource_id, reason: row.reason, status: row.status, created_at: row.created_at })),
-      feedback: (feedback.data || []).map((row: any) => ({ id: row.id, feedback_type: row.feedback_type, message: row.message, is_anonymous: Boolean(row.is_anonymous), created_at: row.created_at })),
-      tickets: (tickets.data || []).map((row: any) => ({ id: row.id, reference: row.ticket_reference, subject: row.subject, category: titleCase(row.category), message: row.description, status: normalizeTicketStatus(row.status), created_at: row.created_at })),
-      queue,
-      faculties: (faculties.data || []).map((row: any) => ({ id: row.id, name: row.name })),
-      departments: (departments.data || []).map((row: any) => ({ id: row.id, name: row.name, faculty_id: row.faculty_id })),
-    };
-  }
-
-  async function adminReview(kind: string, id: string, approved: boolean) {
-    const { client, userId } = await requireAdministrator();
-    if (!navigator.onLine) throw new Error('Connect to the internet before reviewing content.');
-    const status = approved ? 'approved' : 'rejected';
-    let result: any;
-    switch (kind) {
-      case 'academic_resources': result = await client.from('academic_resources').update({ status, reviewed_by: userId, reviewed_at: now() }).eq('id', id); break;
-      case 'announcements': result = await client.from('announcements').update({ status, published_at: approved ? now() : null }).eq('id', id); break;
-      case 'campus_locations': result = await client.from('campus_locations').update({ status, is_active: approved }).eq('id', id); break;
-      case 'opportunities': {
-        if (approved) {
-          const { data: opportunity, error } = await client.from('opportunities').select('source').eq('id', id).maybeSingle();
-          if (error) throw error;
-          if (!opportunity?.source?.trim()) throw new Error('Add a source or organizer before approving and verifying this opportunity.');
-        }
-        result = await client.from('opportunities').update({ status, is_verified: approved, reviewed_by: userId, reviewed_at: now() }).eq('id', id);
-        break;
-      }
-      case 'lost_found_items': result = await client.from('lost_found_items').update({ status }).eq('id', id); break;
-      case 'community_posts': result = await client.from('community_posts').update({ status }).eq('id', id); break;
-      case 'post_comments': result = await client.from('post_comments').update({ status }).eq('id', id); break;
-      default: throw new Error('This content type is not available for review.');
-    }
-    if (result.error) throw result.error;
-    await refresh();
-  }
-
-  async function adminPublishAnnouncement(input: { title: string; body: string; category: string; official: boolean }) {
-    const { client, userId } = await requireAdministrator();
-    if (!navigator.onLine) throw new Error('Connect to the internet before publishing an announcement.');
-    const title = input.title.trim(); const body = input.body.trim();
-    if (title.length < 2 || body.length < 2) throw new Error('Enter an announcement title and message.');
-    const { error } = await client.from('announcements').insert({ author_id: userId, title, body, category: slug(input.category) || 'general', status: 'approved', is_official: input.official, published_at: now() });
-    if (error) throw error;
-    await refresh();
-  }
-
-  async function adminAddLocation(input: { name: string; location_type: string; description: string; address: string; latitude?: number; longitude?: number; osm_url: string }) {
-    const { client, userId } = await requireAdministrator();
-    if (!navigator.onLine) throw new Error('Connect to the internet before updating the campus directory.');
-    const name = input.name.trim();
-    if (name.length < 2) throw new Error('Enter a verified location name.');
-    if ((input.latitude == null) !== (input.longitude == null)) throw new Error('Enter both coordinates, or leave both blank.');
-    const { error } = await client.from('campus_locations').insert({ created_by: userId, name, location_type: slug(input.location_type) || 'other', description: input.description.trim() || null, address: input.address.trim() || null, latitude: input.latitude ?? null, longitude: input.longitude ?? null, osm_url: input.osm_url.trim() || null, status: 'approved', is_active: true });
-    if (error) throw error;
-    await refresh();
-  }
-
-  async function adminAddFaculty(value: string) {
-    const { client } = await requireAdministrator();
-    if (!navigator.onLine) throw new Error('Connect to the internet before updating academic setup.');
-    const name = value.trim();
-    if (name.length < 2 || name.length > 160) throw new Error('Enter a faculty name between 2 and 160 characters.');
-    const { error } = await client.from('faculties').insert({ name });
-    if (error) throw error;
-    await refresh();
-  }
-
-  async function adminAddDepartment(input: { name: string; faculty_id: string }) {
-    const { client } = await requireAdministrator();
-    if (!navigator.onLine) throw new Error('Connect to the internet before updating academic setup.');
-    const name = input.name.trim();
-    if (name.length < 2 || name.length > 160 || !input.faculty_id) throw new Error('Enter a valid department name and choose its faculty.');
-    const { data: faculty, error: facultyError } = await client.from('faculties').select('id,is_active').eq('id', input.faculty_id).maybeSingle();
-    if (facultyError) throw facultyError;
-    if (!faculty?.is_active) throw new Error('Choose an active faculty in the campus directory.');
-    const { error } = await client.from('departments').insert({ name, faculty_id: input.faculty_id });
-    if (error) throw error;
-    await refresh();
-  }
-
-  async function adminPublishOpportunity(input: { title: string; description: string; eligibility: string; deadline: string; application_url: string; category: string; source: string; verified: boolean }) {
-    const { client, userId } = await requireAdministrator();
-    if (!navigator.onLine) throw new Error('Connect to the internet before publishing an opportunity.');
-    const title = input.title.trim(); const description = input.description.trim(); const source = input.source.trim();
-    const categories = ['scholarship', 'internship', 'graduate_programme', 'competition', 'hackathon', 'online_course', 'conference', 'fellowship', 'volunteer', 'entrepreneurship', 'other'];
-    const category = slug(input.category);
-    if (title.length < 2 || description.length < 2) throw new Error('Enter an opportunity title and description.');
-    if (!categories.includes(category)) throw new Error('Choose a supported opportunity category.');
-    if (input.verified && !source) throw new Error('Add the checked source before marking an opportunity verified.');
-    let applicationUrl: string | null = null;
-    if (input.application_url.trim()) {
-      const parsedUrl = new URL(input.application_url.trim());
-      if (!['https:', 'http:'].includes(parsedUrl.protocol)) throw new Error('Application links must use HTTP or HTTPS.');
-      applicationUrl = parsedUrl.toString();
-    }
-    const deadline = input.deadline ? new Date(`${input.deadline}T12:00:00.000Z`) : null;
-    if (deadline && Number.isNaN(deadline.getTime())) throw new Error('Enter a valid opportunity deadline.');
-    const { error } = await client.from('opportunities').insert({ submitted_by: userId, title, description, eligibility: input.eligibility.trim() || null, deadline: deadline?.toISOString() || null, application_url: applicationUrl, category, source: source || null, status: 'approved', is_verified: input.verified });
-    if (error) throw error;
-    await refresh();
-  }
-
-  async function adminReplyTicket(ticketId: string, message: string, status: string) {
-    const { client, userId } = await requireAdministrator();
-    if (!navigator.onLine) throw new Error('Connect to the internet before responding to a ticket.');
-    if (status !== 'resolved' && status !== 'in_progress') throw new Error('Choose a valid ticket status.');
-    const body = message.trim();
-    if (body) {
-      const { error } = await client.from('support_replies').insert({ ticket_id: ticketId, author_id: userId, body });
-      if (error) throw error;
-    }
-    const { error } = await client.from('support_tickets').update({ status, closed_at: status === 'resolved' ? now() : null }).eq('id', ticketId);
-    if (error) throw error;
-    await refresh();
-  }
-
-  async function adminSetRole(id: string, role: Role) {
-    const { client, userId } = await requireAdministrator();
-    if (id === userId) throw new Error('You cannot change your own administrator role.');
-    if (!['student', 'contributor', 'moderator', 'administrator'].includes(role)) throw new Error('Choose a valid CAMPORA role.');
-    const { error } = await client.from('profiles').update({ role }).eq('id', id);
-    if (error) throw error;
-    await refresh();
-  }
-
-  async function adminSetActive(id: string, active: boolean) {
-    const { client, userId } = await requireAdministrator();
-    if (id === userId) throw new Error('You cannot suspend your own administrator account.');
-    const { error } = await client.from('profiles').update({ is_active: active }).eq('id', id);
-    if (error) throw error;
-    await refresh();
-  }
-
-  async function adminResolveReport(id: string, status: string, notes: string) {
-    const { client, userId } = await requireAdministrator();
-    if (status !== 'resolved' && status !== 'dismissed') throw new Error('Choose a valid report outcome.');
-    const { error } = await client.from('user_reports').update({ status, reviewed_by: userId, resolution_notes: notes.trim().slice(0, 2000) }).eq('id', id);
-    if (error) throw error;
-    await refresh();
-  }
-
-  return { data, profile, setProfile, faculties, departments, publicProfiles, followingProfiles, followingLoading, followingError, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, searchPublicProfiles, setProfileFollow, refreshProfileFollowStats, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
+  return { data, profile, setProfile, faculties, departments, publicProfiles, followingProfiles, followingLoading, followingError, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, maintenanceMode: platformControls.maintenance_mode, registrationEnabled: platformControls.registration_enabled, contentModerationEnabled: platformControls.content_moderation_enabled, refresh, loadPublicProfile, searchPublicProfiles, setProfileFollow, refreshProfileFollowStats, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot: adminApi.loadAdminSnapshot, adminReview: adminApi.adminReview, adminPublishAnnouncement: adminApi.adminSaveAnnouncement, adminAddLocation: (draft: { name: string; location_type: string; description: string; address: string; latitude?: number; longitude?: number; osm_url: string }) => adminApi.adminSaveLocation({ ...draft, status: 'pending', is_active: false }), adminSaveLocation: adminApi.adminSaveLocation, adminSetLocationActive: adminApi.adminSetLocationActive, adminDeleteLocation: adminApi.adminDeleteLocation, adminArchiveContent: adminApi.adminArchiveContent, adminAddFaculty: adminApi.adminAddFaculty, adminAddDepartment: adminApi.adminAddDepartment, adminRenameFaculty: adminApi.adminRenameFaculty, adminRenameDepartment: adminApi.adminRenameDepartment, adminSetFacultyActive: adminApi.adminSetFacultyActive, adminSetDepartmentActive: adminApi.adminSetDepartmentActive, adminPublishOpportunity: adminApi.adminPublishOpportunity, adminReplyTicket: adminApi.adminReplyTicket, adminSetRole: adminApi.adminSetRole, adminSetActive: adminApi.adminSetActive, adminResolveReport: adminApi.adminResolveReport, adminSaveSettings: adminApi.adminSaveSettings };
 }
 
 async function currentUserId() { if (!supabase) throw new Error('Database is not connected.'); const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw new Error('Please sign in again.'); return data.user.id; }

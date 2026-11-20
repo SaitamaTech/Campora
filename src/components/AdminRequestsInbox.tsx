@@ -13,9 +13,11 @@ type AdminFeedbackEntry = {
 
 type RequestStatusFilter = 'active' | 'all' | 'resolved';
 
-export function AdminRequestsInbox({ tickets, feedback, onReplyTicket, onRefresh, onToast }: {
+export function AdminRequestsInbox({ tickets, feedback, replies, showFeedback = true, onReplyTicket, onRefresh, onToast }: {
   tickets: SupportTicket[];
   feedback: AdminFeedbackEntry[];
+  replies: { id: string; ticket_id: string; responder_name: string; message: string; created_at: string }[];
+  showFeedback?: boolean;
   onReplyTicket: (ticketId: string, message: string, status: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onToast: (message: string) => void;
@@ -94,9 +96,9 @@ export function AdminRequestsInbox({ tickets, feedback, onReplyTicket, onRefresh
       <button type="button" role="tab" aria-selected={tab === 'requests'} className={tab === 'requests' ? 'active' : ''} onClick={() => setTab('requests')}>
         <MessageSquareText size={16} /><span>Support requests</span><b>{activeCount}</b>
       </button>
-      <button type="button" role="tab" aria-selected={tab === 'feedback'} className={tab === 'feedback' ? 'active' : ''} onClick={() => setTab('feedback')}>
+      {showFeedback && <button type="button" role="tab" aria-selected={tab === 'feedback'} className={tab === 'feedback' ? 'active' : ''} onClick={() => setTab('feedback')}>
         <Inbox size={16} /><span>Student feedback</span><b>{feedback.length}</b>
-      </button>
+      </button>}
     </div>
 
     {tab === 'requests' && <>
@@ -112,11 +114,12 @@ export function AdminRequestsInbox({ tickets, feedback, onReplyTicket, onRefresh
       {visibleTickets.length ? <div className="ticket-list">{visibleTickets.map((ticket) => <article className="ticket-card admin-ticket" key={ticket.id}>
         <div className="admin-ticket-head"><div><span className="ticket-id">{ticket.reference}</span><h3>{ticket.subject}</h3><small>{ticket.category} · {new Date(ticket.created_at).toLocaleString()}</small></div><Tag tone={ticket.status === 'Resolved' || ticket.status === 'Closed' ? 'success' : ticket.status === 'In Progress' ? 'accent' : 'warning'}>{ticket.status}</Tag></div>
         <p className="admin-ticket-message">{ticket.message}</p>
+        {replies.filter((reply) => reply.ticket_id === ticket.id).length > 0 && <div className="admin-ticket-history" aria-label="Previous support conversation">{replies.filter((reply) => reply.ticket_id === ticket.id).map((reply) => <article key={reply.id}><b>{reply.responder_name}</b><p>{reply.message}</p><time>{new Date(reply.created_at).toLocaleString()}</time></article>)}</div>}
         {!['Closed', 'Resolved'].includes(ticket.status) && <div className="admin-reply-form"><label className="admin-inbox-reply-label" htmlFor={`reply-${ticket.id}`}>Reply to this request</label><textarea id={`reply-${ticket.id}`} rows={3} value={replyDrafts[ticket.id] || ''} onChange={(event) => setReplyDrafts((current) => ({ ...current, [ticket.id]: event.target.value }))} placeholder="Write a helpful response…" /><div><Button variant="secondary" disabled={busyId === ticket.id} onClick={() => void resolve(ticket)}><CheckCircle2 size={14} />Mark resolved</Button><Button disabled={busyId === ticket.id || !replyDrafts[ticket.id]?.trim()} onClick={() => void reply(ticket)}><Send size={14} />Send response</Button></div></div>}
       </article>)}</div> : <EmptyState title={statusFilter === 'active' ? 'No open support requests' : 'No matching support requests'} text={statusFilter === 'active' ? 'New student requests will appear here as soon as they are submitted.' : 'Try a different status or category filter.'} icon={<MessageSquareText size={20} />} />}
     </>}
 
-    {tab === 'feedback' && (feedback.length ? <div className="admin-feedback-list">{feedback.map((item) => <article className="admin-feedback-card" key={item.id}>
+    {showFeedback && tab === 'feedback' && (feedback.length ? <div className="admin-feedback-list">{feedback.map((item) => <article className="admin-feedback-card" key={item.id}>
       <div className="admin-feedback-card-head"><Tag tone="accent">{item.feedback_type.replaceAll('_', ' ')}</Tag><time>{new Date(item.created_at).toLocaleString()}</time></div>
       <p>{item.message}</p><small>{item.is_anonymous ? 'Submitted anonymously' : 'Submitted by a registered student'}</small>
     </article>)}</div> : <EmptyState title="No feedback yet" text="Student feedback submitted through Help & support will appear here." icon={<Inbox size={20} />} />)}
