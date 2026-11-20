@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CamporaData, CamporaNotification, CommunityComment, CommunityPost, ExploreDraft, Profile, PublicStudentProfile, Resource, Role, SupportTicket } from './types';
+import type { CamporaData, CamporaNotification, CommunityComment, CommunityPost, ExploreDraft, Profile, ProfileFollowStats, PublicStudentProfile, Resource, Role, SupportTicket } from './types';
 import type { AdminSnapshot } from '../components/AdminDashboard';
 import { demoData, demoStorageKey } from './demoData';
 import { supabase, supabaseConfigured } from './supabase';
@@ -154,15 +154,16 @@ export function useCampora() {
     authRef.current = Boolean(userId);
     setAuthenticated(Boolean(userId));
     if (!userId || !supabase) { setNotifications([]); setProfile({ full_name: '', is_public: false, role: 'student', is_verified_representative: false }); return; }
-    const [{ data: row }, { data: departments }, { data: faculties }] = await Promise.all([
+    const [{ data: row }, { data: departments }, { data: faculties }, { data: followStats }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
       supabase.from('departments').select('id,name').limit(500),
       supabase.from('faculties').select('id,name').limit(200),
+      supabase.rpc('get_profile_follow_stats', { p_profile_id: userId }),
     ]);
     const dept = (departments || []).find((item: any) => item.id === row?.department_id);
     const faculty = (faculties || []).find((item: any) => item.id === row?.faculty_id);
     const avatarUrl = row?.avatar_path ? await signedUrl('avatars', row.avatar_path) : undefined;
-    if (row) setProfile({ id: userId, full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: row.academic_level_label || levelText(row.academic_level), username: row.username || undefined, bio: row.bio || undefined, is_public: row.is_public !== false, avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative) });
+    if (row) setProfile({ id: userId, full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: row.academic_level_label || levelText(row.academic_level), username: row.username || undefined, bio: row.bio || undefined, is_public: row.is_public !== false, avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative), followers_count: followStats?.[0] ? Number(followStats[0].followers_count ?? 0) : undefined });
     else setProfile({ id: userId, full_name: '', email, is_public: true, role: 'student', is_verified_representative: false });
   }
   async function loadPublicProfile(profileId: string): Promise<PublicStudentProfile> {
@@ -172,17 +173,46 @@ export function useCampora() {
       throw new Error('That public student profile is not available in preview mode.');
     }
     if (!supabase) throw new Error('Student profiles require a database connection.');
-    const { data: rows, error } = await supabase.rpc('get_public_student_profiles', { p_profile_id: profileId, p_search: null, p_limit: 1 });
+    const [{ data: rows, error }, { data: followStats, error: followStatsError }] = await Promise.all([
+      supabase.rpc('get_public_student_profiles', { p_profile_id: profileId, p_search: null, p_limit: 1 }),
+      supabase.rpc('get_profile_follow_stats', { p_profile_id: profileId }),
+    ]);
     if (error) throw error;
+    if (followStatsError) throw followStatsError;
     const row = rows?.[0];
     if (!row) throw new Error('This profile is private or no longer available.');
+    const followStat = followStats?.[0];
     const avatarUrl = row.avatar_path ? await signedUrl('avatars', row.avatar_path) : undefined;
     return {
       id: row.id, full_name: row.full_name, username: row.username || undefined,
       faculty: row.faculty || undefined, department: row.department || undefined,
       level: row.academic_level_label || levelText(row.academic_level), bio: row.bio || undefined, avatar_url: avatarUrl,
+      followers_count: Number(followStat?.followers_count ?? 0), is_following: Boolean(followStat?.is_following),
     };
   }
+
+  async function setProfileFollow(profileId: string, shouldFollow: boolean): Promise<ProfileFollowStats> {
+    if (demo) throw new Error('Following other students requires a connected account.');
+    if (!supabase || !authRef.current) throw new Error('Sign in to follow students.');
+    if (!navigator.onLine) throw new Error('You are offline. Connect before updating follows.');
+    const userId = await currentUserId();
+    if (profileId === userId) throw new Error('You cannot follow your own profile.');
+    const { error } = await supabase.rpc('set_profile_follow', { p_followed_id: profileId, p_follow: shouldFollow });
+    if (error) throw error;
+    const { data: stats, error: statsError } = await supabase.rpc('get_profile_follow_stats', { p_profile_id: profileId });
+    if (statsError) throw statsError;
+    const result = stats?.[0];
+    if (!result) throw new Error('Could not refresh this profile’s follower count.');
+    return { followers_count: Number(result.followers_count ?? 0), is_following: Boolean(result.is_following) };
+  }
+
+  const refreshProfileFollowStats = useCallback(async () => {
+    const userId = authUserIdRef.current;
+    if (!supabase || !userId) return;
+    const { data: stats, error } = await supabase.rpc('get_profile_follow_stats', { p_profile_id: userId });
+    if (error || !stats?.[0]) return;
+    setProfile((current) => current.id === userId ? { ...current, followers_count: Number(stats[0].followers_count ?? 0) } : current);
+  }, []);
 
   function updateData(updater: (current: CamporaData) => CamporaData) { setData((current) => { const next = updater(current); if (demo) safeSave(demoStorageKey, next); return next; }); }
 
@@ -552,7 +582,7 @@ export function useCampora() {
     await refresh();
   }
 
-  return { data, profile, setProfile, faculties, departments, publicProfiles, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
+  return { data, profile, setProfile, faculties, departments, publicProfiles, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, setProfileFollow, refreshProfileFollowStats, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
 }
 
 async function currentUserId() { if (!supabase) throw new Error('Database is not connected.'); const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw new Error('Please sign in again.'); return data.user.id; }

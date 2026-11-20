@@ -837,6 +837,12 @@ a { color: inherit; }
 .public-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .public-profile-hero h2 { margin: 4px 0; color: #f0e8f6; font-size: 22px; }
 .public-profile-username { color: #c194e4; font-size: 13px; }
+.public-profile-social { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid rgba(194, 176, 218, .12); background: rgba(255,255,255,.025); border-radius: 12px; }
+.public-profile-followers { display: flex; align-items: center; gap: 9px; color: #d1a3ef; }
+.public-profile-followers b, .public-profile-followers small { display: block; }
+.public-profile-followers b { color: #f0e8f6; font-size: 15px; }
+.public-profile-followers small { margin-top: 2px; color: #92889d; font-size: 11px; }
+.public-profile-social .button { min-height: 34px; font-size: 12px; }
 .public-profile-facts { display: grid; gap: 9px; }
 .public-profile-facts > div { display: flex; align-items: center; gap: 10px; padding: 11px 12px; color: #c69ced; border: 1px solid rgba(194, 176, 218, .1); background: rgba(255,255,255,.025); border-radius: 11px; }
 .public-profile-facts > div > span:last-child { min-width: 0; }

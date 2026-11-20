@@ -28,6 +28,12 @@ export interface Profile {
   avatar_url?: string;
   role?: Role;
   is_verified_representative?: boolean;
+  followers_count?: number;
+}
+
+export interface ProfileFollowStats {
+  followers_count: number;
+  is_following: boolean;
 }
 
 export interface CamporaNotification {
@@ -51,6 +57,8 @@ export interface PublicStudentProfile {
   level?: string;
   bio?: string;
   avatar_url?: string;
+  followers_count?: number;
+  is_following?: boolean;
 }
 
 export interface Announcement {

@@ -46,6 +46,8 @@ export default function App() {
   const [viewedStudent, setViewedStudent] = useState<PublicStudentProfile | null>(null);
   const [studentProfileLoading, setStudentProfileLoading] = useState(false);
   const results = useMemo(() => searchData(app.data, query), [app.data, query]);
+  const isAuthenticated = app.authenticated;
+  const refreshProfileFollowStats = app.refreshProfileFollowStats;
 
   useEffect(() => {
     const onlineHandler = () => setOnline(true); const offlineHandler = () => setOnline(false);
@@ -55,6 +57,7 @@ export default function App() {
     return () => { window.removeEventListener('online', onlineHandler); window.removeEventListener('offline', offlineHandler); window.removeEventListener('beforeinstallprompt', installHandler); window.removeEventListener('hashchange', hashHandler); window.removeEventListener('popstate', hashHandler); };
   }, []);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 4200); return () => window.clearTimeout(timer); }, [toast]);
+  useEffect(() => { if (page === 'profile' && isAuthenticated) void refreshProfileFollowStats(); }, [page, isAuthenticated, refreshProfileFollowStats]);
 
   function navigate(nextPage: Page, nextTab?: ExploreTab) {
     setPage(nextPage); setSpecial(null); setMobileMenuOpen(false);
@@ -73,6 +76,11 @@ export default function App() {
     try { setViewedStudent(await app.loadPublicProfile(profileId)); }
     catch (error) { setToast(error instanceof Error ? error.message : 'Could not load this student profile.'); }
     finally { setStudentProfileLoading(false); }
+  }
+  async function updateProfileFollow(profileId: string, shouldFollow: boolean) {
+    const stats = await app.setProfileFollow(profileId, shouldFollow);
+    setViewedStudent((current) => current?.id === profileId ? { ...current, ...stats } : current);
+    return stats;
   }
   async function installApp() { if (!installEvent) { setInstallHelpOpen(true); return; } await installEvent.prompt(); const choice = await installEvent.userChoice; if (choice.outcome === 'accepted') setToast('CAMPORA is being added to your device.'); setInstallEvent(null); }
   async function safeAction<T>(action: () => Promise<T>): Promise<T> { try { return await action(); } catch (error) { setToast(error instanceof Error ? error.message : 'That action could not be completed.'); throw error; } }
@@ -124,7 +132,7 @@ export default function App() {
     <NotificationInbox open={notificationInboxOpen} authenticated={app.authenticated} loading={app.loading} notifications={app.notifications} initialNotificationId={notificationIdToOpen} onClose={closeNotificationInbox} onSignIn={() => { closeNotificationInbox(); navigate('profile'); }} onOpenSettings={() => { closeNotificationInbox(); setNotificationSettingsOpen(true); }} onMarkRead={app.markNotificationRead} />
     <NotificationSettings open={notificationSettingsOpen} authenticated={app.authenticated} configured={app.configured} onClose={() => setNotificationSettingsOpen(false)} onSignIn={() => { setNotificationSettingsOpen(false); navigate('profile'); }} />
     {toast && <div className="toast" role="status"><span className="toast-icon"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
-    {(viewedStudent || studentProfileLoading) && <PublicProfileModal profile={viewedStudent} loading={studentProfileLoading} onClose={() => { setViewedStudent(null); setStudentProfileLoading(false); }} />}
+    {(viewedStudent || studentProfileLoading) && <PublicProfileModal profile={viewedStudent} loading={studentProfileLoading} authenticated={app.authenticated} currentProfileId={app.profile.id} onFollow={updateProfileFollow} onSignIn={() => { setViewedStudent(null); navigate('profile'); }} onClose={() => { setViewedStudent(null); setStudentProfileLoading(false); }} />}
     {searchOpen && <Modal title={`Search results${query.trim() ? ` for “${query.trim()}”` : ''}`} onClose={() => setSearchOpen(false)} wide><div className="search-results">{results.length ? results.map((result, index) => { const Icon = result.icon; return <button key={`${result.title}-${index}`} className="search-result" onClick={() => openResult(result)}><span className="search-result-icon"><Icon size={16} /></span><span><b>{result.title}</b><small>{result.detail}</small></span><ArrowUpRight size={15} /></button>; }) : <div className="search-empty"><Search size={20} /><b>No results found</b><span>Try a course code, campus place or a different keyword.</span></div>}</div></Modal>}
     {installHelpOpen && <Modal title="Install CAMPORA" onClose={() => setInstallHelpOpen(false)}><div className="install-help"><div className="install-help-icon"><Wifi size={20} /></div><p>Install CAMPORA from your browser menu to add it to your home screen. On iPhone or iPad, choose <b>Share → Add to Home Screen</b>. On Android, choose <b>Install app</b> or <b>Add to Home screen</b>.</p><p>The offline app shell is available after the first visit. Database submissions still need an internet connection.</p><button className="button button-primary" onClick={() => setInstallHelpOpen(false)}>Got it</button></div></Modal>}
   </div>;
