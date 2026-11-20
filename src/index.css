@@ -854,3 +854,26 @@ a { color: inherit; }
   .public-profile-avatar { width: 62px; height: 62px; flex-basis: 62px; border-radius: 19px; }
   .public-profile-hero h2 { font-size: 19px; }
 }
+
+
+/* Phone notification controls: larger, high-contrast text for mobile users. */
+.phone-notification-settings { display: grid; gap: 16px; }
+.phone-notification-status { display: flex; align-items: flex-start; gap: 14px; padding: 16px; border: 1px solid rgba(196, 181, 253, .24); background: linear-gradient(135deg, rgba(167, 139, 250, .13), rgba(196, 181, 253, .045)); border-radius: 15px; }
+.phone-notification-status.is-on { border-color: rgba(79, 210, 160, .35); background: linear-gradient(135deg, rgba(79, 210, 160, .13), rgba(196, 181, 253, .045)); }
+.phone-notification-icon { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; color: var(--accent-2); background: rgba(167, 139, 250, .16); border: 1px solid rgba(196, 181, 253, .2); border-radius: 13px; }
+.phone-notification-status.is-on .phone-notification-icon { color: var(--success); background: rgba(79, 210, 160, .12); border-color: rgba(79, 210, 160, .22); }
+.phone-notification-status b { display: block; margin: 1px 0 5px; color: var(--text); font-size: 17px; line-height: 1.35; }
+.phone-notification-status p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.phone-notification-note { display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px; color: #e4d8f6; background: rgba(167, 139, 250, .09); border: 1px solid rgba(196, 181, 253, .16); border-radius: 12px; font-size: 15px; line-height: 1.55; }
+.phone-notification-note svg { flex: 0 0 auto; margin-top: 2px; color: var(--accent-2); }
+.phone-notification-privacy { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.phone-notification-actions { flex-wrap: wrap; gap: 10px; margin-top: 0; }
+.phone-notification-actions .button { min-height: 46px; font-size: 14px; }
+.phone-notification-off { border: 1px solid rgba(196, 181, 253, .22); }
+@media (max-width: 600px) {
+  .phone-notification-status { padding: 14px; }
+  .phone-notification-status b { font-size: 16px; }
+  .phone-notification-status p, .phone-notification-note { font-size: 14px; }
+  .phone-notification-actions { display: grid; }
+  .phone-notification-actions .button { width: 100%; justify-content: center; }
+}

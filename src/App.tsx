@@ -11,6 +11,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { Modal } from './components/ui';
 import { useCampora } from './lib/useCampora';
 import './index.css';
+import { NotificationSettings } from './components/NotificationSettings';
 import type { ExploreTab, Page, PublicStudentProfile } from './lib/types';
 
 const navigation: { page: Page; label: string; icon: typeof House; key: string }[] = [
@@ -35,6 +36,7 @@ export default function App() {
   const [toast, setToast] = useState('');
   const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(null);
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [viewedStudent, setViewedStudent] = useState<PublicStudentProfile | null>(null);
   const [studentProfileLoading, setStudentProfileLoading] = useState(false);
@@ -84,7 +86,7 @@ export default function App() {
     </aside>
 
     <div className="app-main">
-      <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation"><Menu size={19} /></button><div className="breadcrumb"><span>Campus</span><ChevronRight size={13} /><b>{special === 'support' ? 'Help & support' : special === 'admin' ? 'Administration' : navigation.find((item) => item.page === page)?.label}</b></div></div><form className="global-search" onSubmit={runSearch}><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search CAMPORA…" aria-label="Search CAMPORA" /><kbd>↵</kbd><button type="submit" aria-label="Search"><ArrowUpRight size={15} /></button></form><div className="topbar-actions"><div className={`network-status ${online ? 'online' : 'offline'}`}><span className="network-dot" />{online ? 'Online' : 'Offline'}</div><button className="icon-button notification-button" onClick={() => setToast('No new notifications yet.')} aria-label="Notifications"><Bell size={17} /><i /></button>{app.authenticated ? <button className="user-chip" onClick={() => navigate('profile')}><span className="avatar avatar-small">{app.profile.avatar_url ? <img src={app.profile.avatar_url} alt="" aria-hidden="true" /> : app.profile.full_name?.slice(0,1) || 'S'}</span><span>{welcome}</span></button> : <button className="top-signin" onClick={() => navigate('profile')}><LogIn size={14} />Sign in</button>}</div></header>
+      <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation"><Menu size={19} /></button><div className="breadcrumb"><span>Campus</span><ChevronRight size={13} /><b>{special === 'support' ? 'Help & support' : special === 'admin' ? 'Administration' : navigation.find((item) => item.page === page)?.label}</b></div></div><form className="global-search" onSubmit={runSearch}><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search CAMPORA…" aria-label="Search CAMPORA" /><kbd>↵</kbd><button type="submit" aria-label="Search"><ArrowUpRight size={15} /></button></form><div className="topbar-actions"><div className={`network-status ${online ? 'online' : 'offline'}`}><span className="network-dot" />{online ? 'Online' : 'Offline'}</div><button className="icon-button notification-button" onClick={() => setNotificationSettingsOpen(true)} aria-label="Phone notification settings" aria-haspopup="dialog"><Bell size={17} /><i /></button>{app.authenticated ? <button className="user-chip" onClick={() => navigate('profile')}><span className="avatar avatar-small">{app.profile.avatar_url ? <img src={app.profile.avatar_url} alt="" aria-hidden="true" /> : app.profile.full_name?.slice(0,1) || 'S'}</span><span>{welcome}</span></button> : <button className="top-signin" onClick={() => navigate('profile')}><LogIn size={14} />Sign in</button>}</div></header>
 
       {!online && <div className="offline-banner"><WifiOff size={15} /><span>You’re offline. CAMPORA’s app shell is available; uploads and database actions need a connection.</span></div>}
       {app.syncError && <div className="sync-banner" role="alert"><Activity size={15} /><span>{app.syncError}</span><button onClick={() => void app.refresh()}>Retry sync</button></div>}
@@ -104,6 +106,7 @@ export default function App() {
     </div>
 
     <nav className="mobile-tabbar" aria-label="Mobile navigation">{navigation.map(({ page: navPage, label, icon: Icon }) => <button key={navPage} className={activeNav === navPage && !special ? 'active' : ''} onClick={() => navigate(navPage)}><Icon size={19} /><span>{label}</span></button>)}</nav>
+    <NotificationSettings open={notificationSettingsOpen} authenticated={app.authenticated} configured={app.configured} onClose={() => setNotificationSettingsOpen(false)} onSignIn={() => { setNotificationSettingsOpen(false); navigate('profile'); }} />
     {toast && <div className="toast" role="status"><span className="toast-icon"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {(viewedStudent || studentProfileLoading) && <PublicProfileModal profile={viewedStudent} loading={studentProfileLoading} onClose={() => { setViewedStudent(null); setStudentProfileLoading(false); }} />}
     {searchOpen && <Modal title={`Search results${query.trim() ? ` for “${query.trim()}”` : ''}`} onClose={() => setSearchOpen(false)} wide><div className="search-results">{results.length ? results.map((result, index) => { const Icon = result.icon; return <button key={`${result.title}-${index}`} className="search-result" onClick={() => openResult(result)}><span className="search-result-icon"><Icon size={16} /></span><span><b>{result.title}</b><small>{result.detail}</small></span><ArrowUpRight size={15} /></button>; }) : <div className="search-empty"><Search size={20} /><b>No results found</b><span>Try a course code, campus place or a different keyword.</span></div>}</div></Modal>}
