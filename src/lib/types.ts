@@ -21,6 +21,7 @@ export interface Profile {
   faculty?: string;
   department?: string;
   level?: string;
+  avatar_path?: string;
   avatar_url?: string;
   role?: Role;
   is_verified_representative?: boolean;

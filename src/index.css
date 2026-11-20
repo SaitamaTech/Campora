@@ -317,6 +317,7 @@ a { color: inherit; }
 .compose-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
 .avatar { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 34px; color: #e0bef6; background: linear-gradient(135deg, #5d4875, #48385c); border: 1px solid rgba(255,255,255,.11); border-radius: 11px; font-size: 14px; font-weight: 700; text-transform: uppercase; }
 .avatar-small { width: 25px; height: 25px; flex: 0 0 25px; border-radius: 8px; font-size: 11px; }
+.avatar img, .profile-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .compose-heading strong, .compose-heading small { display: block; }
 .compose-heading strong { color: #e3dceb; font-size: 12px; }
 .compose-heading small { margin-top: 3px; color: #7b8797; font-size: 10px; }
@@ -364,6 +365,7 @@ a { color: inherit; }
 .profile-main, .profile-aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .profile-hero { display: flex; align-items: center; gap: 15px; }
 .profile-avatar { width: 61px; height: 61px; display: grid; place-items: center; flex: 0 0 61px; color: #eed4ff; background: linear-gradient(145deg, #b85fff, #7843a9); border: 1px solid rgba(255,255,255,.16); border-radius: 20px; font-size: 25px; font-weight: 720; text-transform: uppercase; box-shadow: 0 10px 26px rgba(145, 72, 216, .19); }
+.profile-avatar img { border-radius: 19px; }
 .profile-identity { flex: 1; min-width: 0; }
 .profile-identity h2 { margin: 4px 0 4px; font-size: 20px; letter-spacing: -.03em; }
 .profile-identity > p:not(.eyebrow) { color: #8793a4; font-size: 11px; }
@@ -540,6 +542,15 @@ a { color: inherit; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .form-note { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; color: #b5a9c5; border: 1px solid rgba(194, 176, 218, .1); background: rgba(255,255,255,.025); border-radius: 8px; font-size: 10px; line-height: 1.5; }
 .form-note svg { flex: 0 0 auto; color: #bda6d8; }
+.form-stack .profile-photo-picker { position: relative; min-height: 60px; display: flex !important; flex-direction: row !important; align-items: center; gap: 10px; padding: 8px; border: 1px dashed rgba(194, 176, 218, .2); border-radius: 9px; cursor: pointer; }
+.profile-photo-preview { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 42px; overflow: hidden; color: #cda1f0; background: rgba(179, 92, 255, .12); border-radius: 12px; }
+.profile-photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+.profile-photo-copy { min-width: 0; flex: 1; }
+.profile-photo-copy b, .profile-photo-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-photo-copy b { color: #e2dbeb; font-size: 10px; }
+.profile-photo-copy small { margin-top: 4px; color: #758295; font-size: 9px; font-weight: 400; }
+.profile-photo-picker input[type=file] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.profile-photo-picker input[type=file]:disabled { cursor: wait; }
 .form-intro { color: #9aa6b5; font-size: 12px; line-height: 1.55; }
 .form-error { margin: 0; color: #cfa0ff; font-size: 11px; line-height: 1.5; }
 .form-success { margin: 0; color: #8ce1be; font-size: 11px; line-height: 1.5; }

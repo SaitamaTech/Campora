@@ -17,6 +17,8 @@ export function useCampora() {
   const [loading, setLoading] = useState(supabaseConfigured);
   const [syncError, setSyncError] = useState('');
   const [recoveryMode, setRecoveryMode] = useState(false);
+  const [faculties, setFaculties] = useState<{ id: string; name: string }[]>([]);
+  const [departments, setDepartments] = useState<{ id: string; name: string; faculty_id: string }[]>([]);
   const authRef = useRef(false);
   const demo = !supabaseConfigured;
 
@@ -39,6 +41,8 @@ export function useCampora() {
       ]);
       const firstError = [announcementResult, resourceResult, locationResult, opportunityResult, lostResult, listingResult, postResult, commentResult, profileResult, facultyResult, departmentResult].find((result) => result.error)?.error;
       if (firstError) throw firstError;
+      setFaculties((facultyResult.data || []).map((row: any) => ({ id: row.id, name: row.name })));
+      setDepartments((departmentResult.data || []).map((row: any) => ({ id: row.id, name: row.name, faculty_id: row.faculty_id })));
       const profiles = new Map((profileResult.data || []).map((row: any) => [row.id, row]));
       const faculties = new Map((facultyResult.data || []).map((row: any) => [row.id, row.name]));
       const departments = new Map((departmentResult.data || []).map((row: any) => [row.id, row.name]));
@@ -117,7 +121,8 @@ export function useCampora() {
     ]);
     const dept = (departments || []).find((item: any) => item.id === row?.department_id);
     const faculty = (faculties || []).find((item: any) => item.id === row?.faculty_id);
-    if (row) setProfile({ full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: levelText(row.academic_level), role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative) });
+    const avatarUrl = row?.avatar_path ? await signedUrl('avatars', row.avatar_path) : undefined;
+    if (row) setProfile({ full_name: row.full_name || '', email, faculty: faculty?.name || '', department: dept?.name || '', level: levelText(row.academic_level), avatar_path: row.avatar_path || undefined, avatar_url: avatarUrl, role: row.role || 'student', is_verified_representative: Boolean(row.verified_representative) });
     else setProfile({ full_name: '', email, role: 'student', is_verified_representative: false });
   }
 
@@ -127,17 +132,46 @@ export function useCampora() {
     if (demo) { const local = { ...profile, ...next, role: 'student' as const, is_verified_representative: false }; setProfile(local); safeSave(profileKey, local); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to save your profile.');
     const user = await currentUserId();
-    const [facultyResult, departmentResult] = await Promise.all([
-      next.faculty ? supabase.from('faculties').select('id').ilike('name', next.faculty).eq('is_active', true).maybeSingle() : Promise.resolve({ data: null, error: null }),
-      next.department ? supabase.from('departments').select('id,faculty_id').ilike('name', next.department).eq('is_active', true).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    ]);
-    if (next.faculty && !facultyResult.data) throw new Error('This faculty has not been added by a CAMPORA administrator yet.');
-    if (next.department && !departmentResult.data) throw new Error('This department has not been added by a CAMPORA administrator yet.');
-    if (facultyResult.data && departmentResult.data && departmentResult.data.faculty_id !== facultyResult.data.id) throw new Error('Choose a department that belongs to the selected faculty.');
+    const facultyResult = next.faculty ? await supabase.from('faculties').select('id').ilike('name', next.faculty).eq('is_active', true).maybeSingle() : { data: null, error: null };
+    if (facultyResult.error) throw facultyResult.error;
+    if (next.faculty && !facultyResult.data) throw new Error('Choose a faculty from the official CAMPORA directory.');
+    if (next.department && !facultyResult.data) throw new Error('Choose a faculty before selecting a department.');
+    const departmentResult = next.department && facultyResult.data
+      ? await supabase.from('departments').select('id,faculty_id').ilike('name', next.department).eq('faculty_id', facultyResult.data.id).eq('is_active', true).maybeSingle()
+      : { data: null, error: null };
+    if (departmentResult.error) throw departmentResult.error;
+    if (next.department && !departmentResult.data) throw new Error('Choose a department from the official list for your faculty.');
     const level = next.level ? Number.parseInt(next.level, 10) / 100 : null;
     const { error } = await supabase.from('profiles').update({ full_name: next.full_name, faculty_id: facultyResult.data?.id || null, department_id: departmentResult.data?.id || null, academic_level: Number.isFinite(level) ? level : null }).eq('id', user);
     if (error) throw error;
     setProfile({ ...profile, ...next });
+  }
+
+  async function uploadProfilePhoto(file: File): Promise<string> {
+    if (demo) throw new Error('Profile photo uploads are available after secure sign-in is connected.');
+    if (!supabase || !authRef.current) throw new Error('Sign in to upload your profile photo.');
+    if (!navigator.onLine) throw new Error('You are offline. Connect to the internet before uploading a profile photo.');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size < 1 || file.size > 5 * 1024 * 1024) {
+      throw new Error('Choose a JPEG, PNG or WebP profile photo under 5 MB.');
+    }
+    if (!await hasAllowedImageSignature(file)) throw new Error('The selected file does not appear to be a valid JPEG, PNG or WebP image.');
+    const user = await currentUserId();
+    const oldPath = profile.avatar_path;
+    const extension = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp';
+    const path = `${user}/${makeId()}.${extension}`;
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { contentType: file.type, cacheControl: '3600', upsert: false });
+    if (uploadError) throw uploadError;
+    const { error: profileError } = await supabase.from('profiles').update({ avatar_path: path }).eq('id', user);
+    if (profileError) { await supabase.storage.from('avatars').remove([path]); throw profileError; }
+    const { data: signed, error: signedError } = await supabase.storage.from('avatars').createSignedUrl(path, 3600);
+    if (signedError || !signed?.signedUrl) {
+      await supabase.from('profiles').update({ avatar_path: oldPath || null }).eq('id', user);
+      await supabase.storage.from('avatars').remove([path]);
+      throw signedError || new Error('The profile photo uploaded, but its secure preview could not be created.');
+    }
+    setProfile({ ...profile, avatar_path: path, avatar_url: signed.signedUrl });
+    if (oldPath && oldPath !== path) await supabase.storage.from('avatars').remove([oldPath]);
+    return signed.signedUrl;
   }
 
   async function authenticate(mode: 'signin' | 'signup', values: { email: string; password: string; full_name: string }) {
@@ -420,11 +454,18 @@ export function useCampora() {
     await refresh();
   }
 
-  return { data, profile, setProfile, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, saveProfile, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
+  return { data, profile, setProfile, faculties, departments, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
 }
 
 async function currentUserId() { if (!supabase) throw new Error('Database is not connected.'); const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw new Error('Please sign in again.'); return data.user.id; }
 async function signedUrl(bucket: string, path: string) { if (!supabase) return undefined; const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 3600); return data?.signedUrl; }
+async function hasAllowedImageSignature(file: File) {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (file.type === 'image/jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (file.type === 'image/png') return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+  if (file.type === 'image/webp') return bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP';
+  return false;
+}
 function safeFileName(name: string) { return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g, '-').slice(-100); }
 function fileType(name: string): string { const ext = name.split('.').pop()?.toLowerCase(); return ['pdf','doc','docx','ppt','pptx'].includes(ext || '') ? ext! : ['jpg','jpeg','png','webp'].includes(ext || '') ? 'image' : 'other'; }
 function titleCase(value: string) { return value.replaceAll('_', ' ').replace(/\b\w/g, (m) => m.toUpperCase()); }
