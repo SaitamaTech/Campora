@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Activity, ArrowDown, ArrowUpRight, Bell, BookOpen, Check, ChevronRight, CircleHelp, Compass, House, LogIn, Menu, Search, Shield, Sparkles, Users, UserRound, Wifi, WifiOff, X } from 'lucide-react';
 import { Home } from './components/Home';
 import { Academics } from './components/Academics';
@@ -45,9 +45,14 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [viewedStudent, setViewedStudent] = useState<PublicStudentProfile | null>(null);
   const [studentProfileLoading, setStudentProfileLoading] = useState(false);
+  const [accountSearchResults, setAccountSearchResults] = useState<PublicStudentProfile[]>([]);
+  const [accountSearchLoading, setAccountSearchLoading] = useState(false);
+  const [accountSearchError, setAccountSearchError] = useState('');
+  const accountSearchRequest = useRef(0);
   const results = useMemo(() => searchData(app.data, query), [app.data, query]);
   const isAuthenticated = app.authenticated;
   const refreshProfileFollowStats = app.refreshProfileFollowStats;
+  const searchPublicProfiles = app.searchPublicProfiles;
 
   useEffect(() => {
     const onlineHandler = () => setOnline(true); const offlineHandler = () => setOnline(false);
@@ -58,7 +63,6 @@ export default function App() {
   }, []);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 4200); return () => window.clearTimeout(timer); }, [toast]);
   useEffect(() => { if (page === 'profile' && isAuthenticated) void refreshProfileFollowStats(); }, [page, isAuthenticated, refreshProfileFollowStats]);
-
   function navigate(nextPage: Page, nextTab?: ExploreTab) {
     setPage(nextPage); setSpecial(null); setMobileMenuOpen(false);
     if (nextPage === 'explore' && nextTab) setExploreTab(nextTab);
@@ -84,7 +88,28 @@ export default function App() {
   }
   async function installApp() { if (!installEvent) { setInstallHelpOpen(true); return; } await installEvent.prompt(); const choice = await installEvent.userChoice; if (choice.outcome === 'accepted') setToast('CAMPORA is being added to your device.'); setInstallEvent(null); }
   async function safeAction<T>(action: () => Promise<T>): Promise<T> { try { return await action(); } catch (error) { setToast(error instanceof Error ? error.message : 'That action could not be completed.'); throw error; } }
-  function runSearch(e: FormEvent) { e.preventDefault(); if (!query.trim()) return; setSearchOpen(true); }
+  function runSearch(e: FormEvent) {
+    e.preventDefault();
+    const term = query.trim();
+    if (!term) return;
+    const requestId = ++accountSearchRequest.current;
+    setSearchOpen(true);
+    setAccountSearchResults([]);
+    setAccountSearchError('');
+    if (term.length < 2) { setAccountSearchLoading(false); return; }
+    if (!app.configured) {
+      setAccountSearchLoading(false);
+      setAccountSearchError('Student account search is available when CAMPORA is connected to its directory.');
+      return;
+    }
+    setAccountSearchLoading(true);
+    void searchPublicProfiles(term)
+      .then((profiles) => {
+        if (requestId === accountSearchRequest.current) setAccountSearchResults(profiles.filter((student) => student.id !== app.profile.id));
+      })
+      .catch(() => { if (requestId === accountSearchRequest.current) setAccountSearchError('Could not search public student accounts. Please try again.'); })
+      .finally(() => { if (requestId === accountSearchRequest.current) setAccountSearchLoading(false); });
+  }
   function openResult(item: SearchResult) { navigate(item.page, item.tab); setSearchOpen(false); setQuery(''); }
 
   function closeNotificationInbox() {
@@ -133,7 +158,13 @@ export default function App() {
     <NotificationSettings open={notificationSettingsOpen} authenticated={app.authenticated} configured={app.configured} onClose={() => setNotificationSettingsOpen(false)} onSignIn={() => { setNotificationSettingsOpen(false); navigate('profile'); }} />
     {toast && <div className="toast" role="status"><span className="toast-icon"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {(viewedStudent || studentProfileLoading) && <PublicProfileModal profile={viewedStudent} loading={studentProfileLoading} authenticated={app.authenticated} currentProfileId={app.profile.id} onFollow={updateProfileFollow} onSignIn={() => { setViewedStudent(null); navigate('profile'); }} onClose={() => { setViewedStudent(null); setStudentProfileLoading(false); }} />}
-    {searchOpen && <Modal title={`Search results${query.trim() ? ` for “${query.trim()}”` : ''}`} onClose={() => setSearchOpen(false)} wide><div className="search-results">{results.length ? results.map((result, index) => { const Icon = result.icon; return <button key={`${result.title}-${index}`} className="search-result" onClick={() => openResult(result)}><span className="search-result-icon"><Icon size={16} /></span><span><b>{result.title}</b><small>{result.detail}</small></span><ArrowUpRight size={15} /></button>; }) : <div className="search-empty"><Search size={20} /><b>No results found</b><span>Try a course code, campus place or a different keyword.</span></div>}</div></Modal>}
+    {searchOpen && <Modal title={`Search results${query.trim() ? ` for “${query.trim()}”` : ''}`} onClose={() => setSearchOpen(false)} wide><div className="search-results">
+      {query.trim().length >= 2 && <section className="search-result-group"><h3 className="search-group-label">PUBLIC STUDENT ACCOUNTS</h3>
+        {accountSearchLoading ? <p className="search-directory-status" role="status">Searching public accounts…</p> : accountSearchError ? <p className="search-directory-error" role="alert">{accountSearchError}</p> : accountSearchResults.length ? accountSearchResults.map((student) => <button key={student.id} className="search-result account-search-result" aria-label={`Open ${student.full_name}'s public profile`} onClick={() => { setSearchOpen(false); setQuery(''); void openStudentProfile(student.id); }}><span className="search-result-icon"><UserRound size={16} /></span><span><b>{student.full_name}</b><small>{[student.username ? `@${student.username}` : '', student.department, student.faculty].filter(Boolean).join(' · ') || 'Public student profile'}</small></span><ArrowUpRight size={15} /></button>) : <p className="search-directory-status">No public student accounts match this search.</p>}
+      </section>}
+      {query.trim().length >= 2 && <section className="search-result-group"><h3 className="search-group-label">CAMPUS CONTENT</h3>{results.length ? results.map((result, index) => { const Icon = result.icon; return <button key={`${result.title}-${index}`} className="search-result" onClick={() => openResult(result)}><span className="search-result-icon"><Icon size={16} /></span><span><b>{result.title}</b><small>{result.detail}</small></span><ArrowUpRight size={15} /></button>; }) : <p className="search-directory-status">No campus content matches this search.</p>}</section>}
+      {query.trim().length < 2 && <div className="search-empty"><Search size={20} /><b>Search with a little more detail</b><span>Enter at least 2 characters to search accounts and campus content.</span></div>}
+    </div></Modal>}
     {installHelpOpen && <Modal title="Install CAMPORA" onClose={() => setInstallHelpOpen(false)}><div className="install-help"><div className="install-help-icon"><Wifi size={20} /></div><p>Install CAMPORA from your browser menu to add it to your home screen. On iPhone or iPad, choose <b>Share → Add to Home Screen</b>. On Android, choose <b>Install app</b> or <b>Add to Home screen</b>.</p><p>The offline app shell is available after the first visit. Database submissions still need an internet connection.</p><button className="button button-primary" onClick={() => setInstallHelpOpen(false)}>Got it</button></div></Modal>}
   </div>;
 }

@@ -546,6 +546,7 @@ a { color: inherit; }
 .modal-head h2 { margin: 5px 0 0; font-size: 21px; letter-spacing: -.03em; }
 .form-stack { display: flex; flex-direction: column; gap: 12px; }
 .form-stack label { display: flex; flex-direction: column; gap: 6px; color: #c4bad1; font-size: 11px; font-weight: 600; }
+.form-stack label .username-field-help { color: #8e849c; font-size: 10px; font-weight: 400; line-height: 1.45; }
 .form-stack input:not([type=checkbox]):not([type=file]), .form-stack textarea, .form-stack select { width: 100%; min-height: 36px; padding: 9px 10px; color: #ede8f4; border: 1px solid rgba(194, 176, 218, .13); background: rgba(10, 6, 14, .43); border-radius: 8px; outline: 0; font-size: 12px; font-weight: 400; }
 .form-stack textarea { resize: vertical; line-height: 1.5; }
 .form-stack input::placeholder, .form-stack textarea::placeholder { color: #657285; }
@@ -594,6 +595,10 @@ a { color: inherit; }
 .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: rgba(194, 176, 218, .12); }
 .auth-divider span { white-space: nowrap; }
 .search-results { display: flex; flex-direction: column; gap: 5px; }
+.search-result-group { display: flex; flex-direction: column; gap: 5px; }
+.search-group-label { margin: 9px 2px 2px; color: #9688a7; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.search-directory-status, .search-directory-error { margin: 4px 2px 8px; color: #8e849b; font-size: 11px; line-height: 1.5; }
+.search-directory-error { color: #d5a8f3; }
 .search-result { display: flex; align-items: center; gap: 10px; padding: 10px; color: #e1dbea; border: 1px solid transparent; background: rgba(255,255,255,.025); border-radius: 9px; text-align: left; cursor: pointer; }
 .search-result:hover { border-color: rgba(182, 96, 255, .16); background: rgba(182, 96, 255, .06); }
 .search-result-icon { width: 30px; height: 30px; display: grid; place-items: center; color: #c478ff; background: rgba(179, 92, 255, .1); border-radius: 9px; }

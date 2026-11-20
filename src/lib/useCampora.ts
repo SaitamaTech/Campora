@@ -191,6 +191,21 @@ export function useCampora() {
     };
   }
 
+  const searchPublicProfiles = useCallback(async (query: string): Promise<PublicStudentProfile[]> => {
+    const search = query.trim();
+    if (search.length < 2) return [];
+    if (!supabase) throw new Error('Student account search requires a connected CAMPORA directory.');
+    const { data: rows, error } = await supabase.rpc('get_public_student_profiles', {
+      p_profile_id: null, p_search: search, p_limit: 20,
+    });
+    if (error) throw error;
+    return (rows || []).map((row: any) => ({
+      id: row.id, full_name: row.full_name, username: row.username || undefined,
+      faculty: row.faculty || undefined, department: row.department || undefined,
+      level: row.academic_level_label || levelText(row.academic_level), bio: row.bio || undefined,
+    }));
+  }, []);
+
   async function setProfileFollow(profileId: string, shouldFollow: boolean): Promise<ProfileFollowStats> {
     if (demo) throw new Error('Following other students requires a connected account.');
     if (!supabase || !authRef.current) throw new Error('Sign in to follow students.');
@@ -238,6 +253,9 @@ export function useCampora() {
     const level = isPostgraduate ? null : selectedLevel ? Number.parseInt(selectedLevel, 10) / 100 : null;
     if (selectedLevel && !isPostgraduate && ![1, 2, 3, 4, 5].includes(level || 0)) throw new Error('Choose a supported academic level.');
     const { data: savedProfile, error } = await supabase.from('profiles').update({ full_name: next.full_name.trim(), username, bio, is_public: next.is_public !== false, faculty_id: facultyResult.data?.id || null, department_id: departmentResult.data?.id || null, academic_level: level, academic_level_label: isPostgraduate ? 'Postgraduate' : null }).eq('id', user).select('id').maybeSingle();
+    if (error?.code === '23505' && /username/i.test(`${error.message} ${error.details || ''}`)) {
+      throw new Error('That username is already taken. Choose a different one. Usernames are not case-sensitive.');
+    }
     if (error) throw error;
     if (!savedProfile) throw new Error('Your profile was not saved. The account could not be found; please sign in again and retry.');
     setProfile({ ...profile, ...next, full_name: next.full_name.trim(), username: username || undefined, bio: bio || undefined, level: selectedLevel || undefined, is_public: next.is_public !== false });
@@ -582,7 +600,7 @@ export function useCampora() {
     await refresh();
   }
 
-  return { data, profile, setProfile, faculties, departments, publicProfiles, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, setProfileFollow, refreshProfileFollowStats, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
+  return { data, profile, setProfile, faculties, departments, publicProfiles, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, searchPublicProfiles, setProfileFollow, refreshProfileFollowStats, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
 }
 
 async function currentUserId() { if (!supabase) throw new Error('Database is not connected.'); const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw new Error('Please sign in again.'); return data.user.id; }
