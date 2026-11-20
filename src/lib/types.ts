@@ -1,12 +1,16 @@
 export type Role = 'student' | 'contributor' | 'moderator' | 'administrator';
 export type Page = 'home' | 'academics' | 'explore' | 'community' | 'profile';
-export type ExploreTab = 'campus' | 'opportunities' | 'lost-found' | 'marketplace';
+export type ExploreTab = 'campus' | 'opportunities' | 'lost-found' | 'news' | 'marketplace';
 export type ExploreDraft = {
   item_type?: string;
   title?: string;
   description?: string;
   location_text?: string;
   approximate_date?: string;
+  eligibility?: string;
+  deadline?: string;
+  application_url?: string;
+  source?: string;
   category?: string;
   price?: string;
   seller_name?: string;

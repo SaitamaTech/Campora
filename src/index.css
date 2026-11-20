@@ -1151,3 +1151,20 @@ a { color: inherit; }
   .marketplace-admin-actions .button { white-space: normal; }
   .profile-marketplace-card { align-items: flex-start; }
 }
+
+/* Admin-reviewed Explore sections */
+.moderation-note { display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; color: #d2c2e3; border: 1px solid rgba(194, 148, 235, .2); background: rgba(167, 112, 209, .08); border-radius: 10px; font-size: 13px; line-height: 1.55; }
+.moderation-note svg { flex: 0 0 auto; margin-top: 1px; color: #c99ce9; }
+.news-update-list { display: grid; gap: 11px; }
+.news-update-card { display: flex; align-items: flex-start; gap: 13px; padding: 16px; border: 1px solid rgba(194, 176, 218, .13); background: rgba(12, 8, 16, .23); border-radius: 13px; }
+.news-update-icon { width: 37px; height: 37px; flex: 0 0 37px; display: grid; place-items: center; color: #d4aff2; background: rgba(167, 112, 209, .14); border-radius: 11px; }
+.news-update-content { min-width: 0; flex: 1; }
+.news-update-content .notice-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #9989aa; font-size: 12px; }
+.news-update-content .notice-meta time { margin-left: auto; color: #897a99; }
+.news-update-content h3 { margin: 9px 0 5px; color: #f0e9f6; font-size: 17px; line-height: 1.4; }
+.news-update-content p { margin: 0; color: #c0b5ca; font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.queue-row { align-items: flex-start; }
+.queue-copy h3 { white-space: normal; overflow-wrap: anywhere; }
+.queue-details { display: grid; gap: 4px; margin: 8px 0 0; padding-left: 16px; color: #b5a9c5; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.queue-details li::marker { color: #bc88df; }
+.queue-review-warning { display: block; margin-top: 7px; color: #f0c77e !important; font-size: 11px !important; line-height: 1.4; }

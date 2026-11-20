@@ -34,11 +34,11 @@ export function useCampora() {
     setSyncError('');
     try {
       const [announcementResult, resourceResult, locationResult, opportunityResult, lostResult, listingResult, postResult, commentResult, profileResult, facultyResult, departmentResult] = await Promise.all([
-        supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(8),
+        supabase.from('announcements').select('*').eq('status', 'approved').not('published_at', 'is', null).order('created_at', { ascending: false }).limit(60),
         supabase.from('academic_resources').select('*').order('created_at', { ascending: false }).limit(60),
         supabase.from('campus_locations').select('*').order('name').limit(100),
-        supabase.from('opportunities').select('*').order('created_at', { ascending: false }).limit(60),
-        supabase.from('lost_found_items').select('*').order('created_at', { ascending: false }).limit(60),
+        supabase.from('opportunities').select('*').eq('status', 'approved').order('created_at', { ascending: false }).limit(60),
+        supabase.from('lost_found_items').select('*').eq('status', 'approved').order('created_at', { ascending: false }).limit(60),
         supabase.from('marketplace_listings').select('id,seller_id,title,description,category,price,currency_code,image_paths,status,is_sold,created_at,updated_at,listing_type,category_id,price_type,listing_status,seller_display_name,location,landmark,is_featured,moderation_reason').eq('status', 'approved').eq('listing_status', 'active').order('created_at', { ascending: false }).limit(60),
         supabase.from('community_posts').select('*').order('created_at', { ascending: false }).limit(40),
         supabase.from('post_comments').select('*').order('created_at', { ascending: true }).limit(300),
@@ -85,7 +85,7 @@ export function useCampora() {
         announcements: (announcementResult.data || []).map((row: any) => ({ id: row.id, title: row.title, body: row.body, category: titleCase(row.category || 'general'), officially_verified: Boolean(row.is_official), created_at: row.published_at || row.created_at, expires_at: row.expires_at, sample: false })),
         resources: mappedResources,
         locations: (locationResult.data || []).map((row: any) => ({ id: row.id, name: row.name, kind: titleCase(row.location_type || 'other'), description: [row.description, row.address].filter(Boolean).join(' · '), directions_url: row.osm_url || undefined, latitude: row.latitude, longitude: row.longitude })),
-        opportunities: (opportunityResult.data || []).map((row: any) => ({ id: row.id, title: row.title, description: row.description || '', eligibility: row.eligibility || '', deadline: row.deadline, application_url: row.application_url, category: titleCase(row.category || 'other'), source: row.source, verification_status: row.status !== 'approved' ? 'unverified' : row.deadline && new Date(row.deadline).getTime() < Date.now() ? 'expired' : row.is_verified ? 'verified' : 'unverified' })),
+        opportunities: (opportunityResult.data || []).map((row: any) => ({ id: row.id, title: row.title, description: row.description || '', eligibility: row.eligibility || '', deadline: row.deadline, application_url: row.application_url, category: titleCase(row.category || 'other'), source: row.source, verification_status: row.deadline && new Date(row.deadline).getTime() < Date.now() ? 'expired' : row.is_verified ? 'verified' : 'unverified' })),
         lostFound: mappedLostFound,
         listings: mappedListings,
         posts: (postResult.data || []).map((row: any) => ({
@@ -355,25 +355,50 @@ export function useCampora() {
     await refresh();
   }
 
-  async function createExploreItem(kind: 'lostFound' | 'listing', draft: ExploreDraft) {
+  async function createExploreItem(kind: 'lostFound' | 'opportunity' | 'listing', draft: ExploreDraft) {
     const title = draft.title?.trim();
     const description = draft.description?.trim();
     if (!title || !description) throw new Error('Add a title and description first.');
     if (demo) {
+      if (kind !== 'listing') throw new Error('Preview mode cannot send student submissions for admin review. Connect CAMPORA and sign in first.');
       const created_at = now();
-      if (kind === 'lostFound') { const item = { id: makeId(), item_type: (draft.item_type === 'found' ? 'found' : 'lost') as 'found' | 'lost', title, description, location_text: draft.location_text || '', approximate_date: draft.approximate_date || null, recovered: false, created_at }; updateData((current) => ({ ...current, lostFound: [item, ...current.lostFound] })); }
-      else { const item = { id: makeId(), title, description, category: draft.category || 'Other', price: Number(draft.price || 0), currency: 'NGN', seller_name: draft.seller_name || profile.full_name || 'You', created_at, sold: false }; updateData((current) => ({ ...current, listings: [item, ...current.listings] })); }
+      const item = { id: makeId(), title, description, category: draft.category || 'Other', price: Number(draft.price || 0), currency: 'NGN', seller_name: draft.seller_name || profile.full_name || 'You', created_at, sold: false };
+      updateData((current) => ({ ...current, listings: [item, ...current.listings] }));
       return;
     }
-    if (!supabase || !authRef.current) throw new Error('Sign in to create a listing.'); if (!navigator.onLine) throw new Error('You are offline. Connect to the internet before publishing a listing.');
+    if (!supabase || !authRef.current) throw new Error('Sign in to submit content for admin review.'); if (!navigator.onLine) throw new Error('You are offline. Connect to the internet before submitting content.');
     const client = supabase;
     const user = await currentUserId();
+    const opportunityCategories = ['scholarship', 'internship', 'graduate_programme', 'competition', 'hackathon', 'online_course', 'conference', 'fellowship', 'volunteer', 'entrepreneurship', 'other'];
+    const opportunityCategory = slug(draft.category || 'other');
+    const source = draft.source?.trim() || '';
+    let applicationUrl: string | null = null;
+    let deadline: string | null = null;
+    if (kind === 'opportunity') {
+      if (!opportunityCategories.includes(opportunityCategory)) throw new Error('Choose a supported opportunity category.');
+      if (source.length < 2 || source.length > 240) throw new Error('Add an organization or source between 2 and 240 characters.');
+      if ((draft.eligibility || '').length > 5000) throw new Error('Eligibility details must be 5,000 characters or fewer.');
+      if (draft.application_url?.trim()) {
+        let parsed: URL;
+        try { parsed = new URL(draft.application_url.trim()); } catch { throw new Error('Enter a valid application link.'); }
+        if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('Application links must use HTTP or HTTPS.');
+        applicationUrl = parsed.toString();
+      }
+      if (draft.deadline?.trim()) {
+        const parsedDeadline = new Date(`${draft.deadline.trim()}T12:00:00.000Z`);
+        if (Number.isNaN(parsedDeadline.getTime())) throw new Error('Enter a valid opportunity deadline.');
+        deadline = parsedDeadline.toISOString();
+      }
+    }
     const bucket = kind === 'lostFound' ? 'lost-found-images' : 'marketplace-images';
-    const imagePath = draft.file ? `${user}/${makeId()}-${safeFileName(draft.file.name)}` : null;
+    const imagePath = kind === 'lostFound' && draft.file ? `${user}/${makeId()}-${safeFileName(draft.file.name)}` : null;
     if (draft.file && imagePath) { const { error } = await client.storage.from(bucket).upload(imagePath, draft.file); if (error) throw error; }
     let insertError: Error | null = null;
     if (kind === 'lostFound') {
-      const { error } = await client.from('lost_found_items').insert({ reporter_id: user, item_type: draft.item_type === 'found' ? 'found' : 'lost', title, description, location_description: draft.location_text || null, occurred_on: draft.approximate_date || null, image_path: imagePath, status: 'approved' });
+      const { error } = await client.from('lost_found_items').insert({ reporter_id: user, item_type: draft.item_type === 'found' ? 'found' : 'lost', title, description, location_description: draft.location_text?.trim() || null, occurred_on: draft.approximate_date || null, image_path: imagePath, status: 'pending' });
+      insertError = error;
+    } else if (kind === 'opportunity') {
+      const { error } = await client.from('opportunities').insert({ submitted_by: user, title, description, eligibility: draft.eligibility?.trim() || null, deadline, application_url: applicationUrl, category: opportunityCategory, source, status: 'pending', is_verified: false });
       insertError = error;
     } else {
       const { error } = await client.from('marketplace_listings').insert({ seller_id: user, title, description, category: slug(draft.category || 'other'), price: Number(draft.price || 0), currency_code: 'NGN', image_paths: imagePath ? [imagePath] : [], status: 'pending' });
@@ -470,8 +495,8 @@ export function useCampora() {
       client.from('academic_resources').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('announcements').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('campus_locations').select('id,name,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('opportunities').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
-      client.from('lost_found_items').select('id,title,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
+      client.from('opportunities').select('id,title,description,eligibility,category,deadline,application_url,source,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
+      client.from('lost_found_items').select('id,title,description,item_type,location_description,occurred_on,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('community_posts').select('id,title,body,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('post_comments').select('id,body,created_at,status').eq('status', 'pending').order('created_at', { ascending: false }).limit(100),
       client.from('faculties').select('id,name').order('name').limit(200),
@@ -481,14 +506,29 @@ export function useCampora() {
     if (failure) throw failure;
     const [users, reports, feedback, tickets, resources, announcements, locations, opportunities, lostFound, posts, comments, faculties, departments] = results;
     const queue: AdminSnapshot['queue'] = [];
-    const appendQueue = (kind: string, rows: any[], titleOf: (row: any) => string) => {
-      for (const row of rows || []) queue.push({ id: row.id, kind, title: titleOf(row) || 'Untitled submission', created_at: row.created_at, status: row.status });
+    const appendQueue = (kind: string, rows: any[], titleOf: (row: any) => string, detailsOf?: (row: any) => string[]) => {
+      for (const row of rows || []) {
+        const details = (detailsOf?.(row) || []).filter(Boolean);
+        queue.push({ id: row.id, kind, title: titleOf(row) || 'Untitled submission', created_at: row.created_at, status: row.status, details, canApprove: kind !== 'opportunities' || Boolean(row.source?.trim()) });
+      }
     };
     appendQueue('academic_resources', resources.data || [], (row) => row.title);
     appendQueue('announcements', announcements.data || [], (row) => row.title);
     appendQueue('campus_locations', locations.data || [], (row) => row.name);
-    appendQueue('opportunities', opportunities.data || [], (row) => row.title);
-    appendQueue('lost_found_items', lostFound.data || [], (row) => row.title);
+    appendQueue('opportunities', opportunities.data || [], (row) => row.title, (row) => [
+      `Description: ${String(row.description || '').slice(0, 1000)}`,
+      row.category ? `Category: ${titleCase(row.category)}` : '',
+      row.eligibility ? `Eligibility: ${String(row.eligibility).slice(0, 500)}` : '',
+      row.deadline ? `Deadline: ${new Date(row.deadline).toLocaleDateString()}` : '',
+      row.source ? `Source / organizer: ${row.source}` : 'Source / organizer: Not provided',
+      row.application_url ? `Application link: ${row.application_url}` : '',
+    ]);
+    appendQueue('lost_found_items', lostFound.data || [], (row) => row.title, (row) => [
+      `Type: ${row.item_type === 'found' ? 'Found' : 'Lost'}`,
+      row.location_description ? `Location: ${String(row.location_description).slice(0, 300)}` : '',
+      row.occurred_on ? `Approximate date: ${row.occurred_on}` : '',
+      `Description: ${String(row.description || '').slice(0, 1000)}`,
+    ]);
     appendQueue('community_posts', posts.data || [], (row) => row.title || row.body);
     appendQueue('post_comments', comments.data || [], (row) => row.body);
     queue.sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -512,7 +552,15 @@ export function useCampora() {
       case 'academic_resources': result = await client.from('academic_resources').update({ status, reviewed_by: userId, reviewed_at: now() }).eq('id', id); break;
       case 'announcements': result = await client.from('announcements').update({ status, published_at: approved ? now() : null }).eq('id', id); break;
       case 'campus_locations': result = await client.from('campus_locations').update({ status, is_active: approved }).eq('id', id); break;
-      case 'opportunities': result = await client.from('opportunities').update({ status, is_verified: approved, reviewed_by: userId, reviewed_at: now() }).eq('id', id); break;
+      case 'opportunities': {
+        if (approved) {
+          const { data: opportunity, error } = await client.from('opportunities').select('source').eq('id', id).maybeSingle();
+          if (error) throw error;
+          if (!opportunity?.source?.trim()) throw new Error('Add a source or organizer before approving and verifying this opportunity.');
+        }
+        result = await client.from('opportunities').update({ status, is_verified: approved, reviewed_by: userId, reviewed_at: now() }).eq('id', id);
+        break;
+      }
       case 'lost_found_items': result = await client.from('lost_found_items').update({ status }).eq('id', id); break;
       case 'community_posts': result = await client.from('community_posts').update({ status }).eq('id', id); break;
       case 'post_comments': result = await client.from('post_comments').update({ status }).eq('id', id); break;
