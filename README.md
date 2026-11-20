@@ -18,14 +18,14 @@ Without Supabase settings, CAMPORA starts in a clearly labeled local preview mod
 ## Supabase setup
 
 1. Create a Supabase project.
-2. Apply the SQL migrations in `supabase/migrations/` in filename order: `202611200001_initial_schema.sql`, then `202611200002_rls_hardening.sql`. You can run each file from the SQL editor or use the Supabase CLI.
-3. In Supabase Dashboard → Storage → Policies, create the policies for CAMPORA's five private buckets before relying on image or attachment uploads. Supabase manages `storage.objects` with a separate owner role, so these policies cannot be installed by every database migration connection. Keep owner access scoped to each user's UUID folder; allow public reads only for approved academic resources and approved marketplace/lost-and-found images; keep avatars and support attachments private.
+2. Apply the SQL migrations in `supabase/migrations/` in filename order: `202611200001_initial_schema.sql`, `202611200002_rls_hardening.sql`, then `202611200003_storage_policies.sql`.
+3. The Storage migration keeps all five buckets private, limits uploads to the signed-in user's UUID folder, and only permits expiring signed downloads for approved campus resources and approved marketplace/lost-and-found images. Avatars are only fetchable for active public profiles; support attachments stay private to ticket owners and moderators. No bucket listing or arbitrary public file reads are enabled.
 4. Promote the first administrator from a trusted Supabase SQL session only. Never expose privileged credentials in client code.
 5. Add verified faculties, departments, courses, opportunities, announcements and campus locations through an authorized admin workflow. CAMPORA intentionally contains no invented campus directory or student records.
 6. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to local development and the Vercel project. Use only the public anon/publishable key.
-7. Set the Supabase Auth site URL and email redirect URLs to the deployed CAMPORA origin.
+7. Set the Supabase Auth Site URL to `https://campora-puce.vercel.app` and allow the signup redirect `https://campora-puce.vercel.app` plus the password-reset redirect `https://campora-puce.vercel.app/?reset=1`.
 
-The migrations create CAMPORA's core tables and RLS policies and provision private Storage buckets. Public reads are limited to approved content; user submissions, support tickets and protected contact requests are owner-scoped. Moderation states and official/verified account fields are protected from self-approval.
+The migrations create CAMPORA's core tables, RLS policies, private Storage buckets, and scoped object policies. Public reads are limited to approved content; user submissions, support tickets and protected contact requests are owner-scoped. Moderation states and official/verified account fields are protected from self-approval.
 
 ## Build and deploy
 
