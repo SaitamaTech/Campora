@@ -1,14 +1,14 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
-import { ArrowUpRight, Flag, Heart, LogIn, MessageCircle, Search, Send, Users } from 'lucide-react';
+import { ArrowUpRight, Flag, Heart, LogIn, MessageCircle, Search, Send, Trash2, Users } from 'lucide-react';
 import type { CommunityComment, CommunityPost, Profile, PublicStudentProfile } from '../lib/types';
 import { Button, EmptyState, Modal, SectionTitle, Tag } from './ui';
 
 const feelings = ['Happy', 'Grateful', 'Excited', 'Motivated', 'Curious', 'Hopeful', 'Tired', 'Stressed', 'Anxious', 'Sad', 'Frustrated'];
 
-export function Community({ posts, comments, profile, publicProfiles, demo, authenticated, onSignIn, onCreate, onComment, onReact, onReport, onViewProfile, onToast }: {
+export function Community({ posts, comments, profile, publicProfiles, demo, authenticated, onSignIn, onCreate, onComment, onReact, onDelete, onReport, onViewProfile, onToast }: {
   posts: CommunityPost[]; comments: CommunityComment[]; profile: Profile; publicProfiles: PublicStudentProfile[]; demo: boolean; authenticated: boolean;
   onSignIn: () => void;
-  onCreate: (body: string, feeling?: string) => Promise<void>; onComment: (postId: string, body: string) => Promise<void>; onReact: (postId: string) => Promise<void>;
+  onCreate: (body: string, feeling?: string) => Promise<void>; onComment: (postId: string, body: string) => Promise<void>; onReact: (postId: string) => Promise<void>; onDelete: (postId: string) => Promise<void>;
   onReport: (type: string, id: string, reason: string) => Promise<void>; onViewProfile: (profileId: string) => void; onToast: (message: string) => void;
 }) {
   const [body, setBody] = useState('');
@@ -18,6 +18,8 @@ export function Community({ posts, comments, profile, publicProfiles, demo, auth
   const [replyDraft, setReplyDraft] = useState('');
   const [reportPost, setReportPost] = useState<CommunityPost | null>(null);
   const [reportReason, setReportReason] = useState('');
+  const [postToDelete, setPostToDelete] = useState<CommunityPost | null>(null);
+  const [deletingPost, setDeletingPost] = useState(false);
   const [directoryOpen, setDirectoryOpen] = useState(false);
   const [directoryQuery, setDirectoryQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -32,6 +34,7 @@ export function Community({ posts, comments, profile, publicProfiles, demo, auth
   async function createPost(e: FormEvent) { e.preventDefault(); if (!body.trim()) return; setBusy(true); try { await onCreate(body.trim(), feeling || undefined); setBody(''); setFeeling(''); onToast(demo ? 'Post added to your preview feed.' : 'Your post is now in the community feed.'); } catch (error) { onToast(error instanceof Error ? error.message : 'Could not publish your post.'); } finally { setBusy(false); } }
   async function createReply(e: FormEvent) { e.preventDefault(); if (!replyPost || !replyDraft.trim()) return; setBusy(true); try { await onComment(replyPost, replyDraft.trim()); setReplyDraft(''); onToast('Reply posted.'); } catch (error) { onToast(error instanceof Error ? error.message : 'Could not post your reply.'); } finally { setBusy(false); } }
   async function submitReport(e: FormEvent) { e.preventDefault(); if (!reportPost || !reportReason.trim()) return; try { await onReport('community_post', reportPost.id, reportReason.trim()); setReportPost(null); setReportReason(''); onToast('Report sent to moderators.'); } catch (error) { onToast(error instanceof Error ? error.message : 'Could not send the report.'); } }
+  async function confirmDeletePost() { if (!postToDelete || deletingPost) return; setDeletingPost(true); try { await onDelete(postToDelete.id); if (replyPost === postToDelete.id) { setReplyPost(null); setReplyDraft(''); } setPostToDelete(null); onToast('Post deleted.'); } catch (error) { onToast(error instanceof Error ? error.message : 'Could not delete your post.'); } finally { setDeletingPost(false); } }
   async function toggleReaction(postId: string) {
     if (reactionLock.current.has(postId)) return;
     reactionLock.current.add(postId);
@@ -62,8 +65,9 @@ export function Community({ posts, comments, profile, publicProfiles, demo, auth
         {sorted.length ? <div className="feed-list">{sorted.map((post) => {
           const postReplies = comments.filter((comment) => comment.post_id === post.id);
           const open = replyPost === post.id;
+          const canDeletePost = demo ? (!post.author_id || post.author_id === (profile.id || 'preview-user')) : authenticated && Boolean(profile.id) && post.author_id === profile.id;
           return <article className="post-card" key={post.id}>
-            <div className="post-head"><span className="avatar">{post.author_name?.slice(0, 1) || 'S'}</span><div className="post-byline">{post.author_id && post.author_public ? <button className="profile-name-link" onClick={() => viewProfile(post.author_id!)}>{post.author_name || 'Community member'}</button> : <strong>{post.author_name || 'Community member'}</strong>}<span>{post.department || 'Student community'} · {timeAgo(post.created_at)}</span></div><button className="icon-button" onClick={() => setReportPost(post)} aria-label="Report this post"><Flag size={15} /></button></div>
+            <div className="post-head"><span className="avatar">{post.author_name?.slice(0, 1) || 'S'}</span><div className="post-byline">{post.author_id && post.author_public ? <button className="profile-name-link" onClick={() => viewProfile(post.author_id!)}>{post.author_name || 'Community member'}</button> : <strong>{post.author_name || 'Community member'}</strong>}<span>{post.department || 'Student community'} · {timeAgo(post.created_at)}</span></div>{canDeletePost && <button className="icon-button delete-post-button" onClick={() => setPostToDelete(post)} aria-label="Delete your post" title="Delete your post"><Trash2 size={15} /></button>}<button className="icon-button" onClick={() => setReportPost(post)} aria-label="Report this post"><Flag size={15} /></button></div>
             {post.sample && <Tag tone="accent">Preview example</Tag>}{post.feeling && <span className="feeling-pill">Feeling {post.feeling.toLowerCase()}</span>}
             <p className="post-body">{post.body}</p>
             <div className="post-actions"><button onClick={() => void toggleReaction(post.id)} disabled={reactingPosts.has(post.id)} aria-label="React to post" aria-busy={reactingPosts.has(post.id)}><Heart size={16} />{post.reactions || 0} <span>Helpful</span></button><button onClick={() => { setReplyPost(open ? null : post.id); setReplyDraft(''); }} aria-expanded={open}><MessageCircle size={16} />{post.comments || postReplies.length} <span>Replies</span></button></div>
@@ -75,6 +79,7 @@ export function Community({ posts, comments, profile, publicProfiles, demo, auth
     </div>
     {directoryOpen && <Modal title="Student directory" onClose={() => setDirectoryOpen(false)}><div className="student-directory"><label className="search-field"><Search size={16} /><input value={directoryQuery} onChange={(e) => setDirectoryQuery(e.target.value)} placeholder="Search name, faculty or department" aria-label="Search students" /></label>{matchingProfiles.length ? matchingProfiles.map((student) => <button className="directory-student directory-student-modal" key={student.id} onClick={() => viewProfile(student.id)}><span className="avatar">{student.full_name.slice(0, 1)}</span><span><b>{student.full_name}</b><small>{[student.department, student.faculty, student.level].filter(Boolean).join(' · ') || 'Student'}</small></span><ArrowUpRight size={15} /></button>) : <p className="comment-empty">No public profiles match that search.</p>}</div></Modal>}
     {reportPost && <Modal title="Report community content" onClose={() => setReportPost(null)}><form className="form-stack" onSubmit={submitReport}><p className="form-intro">Tell the moderators what to review in this post.</p><label>Reason<textarea required minLength={5} rows={4} value={reportReason} onChange={(e) => setReportReason(e.target.value)} placeholder="Describe the concern" /></label><div className="form-actions"><Button variant="secondary" onClick={() => setReportPost(null)}>Cancel</Button><Button type="submit">Send report</Button></div></form></Modal>}
+    {postToDelete && <Modal title="Delete your post?" onClose={() => { if (!deletingPost) setPostToDelete(null); }}><div className="form-stack"><p className="form-intro">This can’t be undone. The post and its replies and reactions will be deleted.</p><div className="form-actions"><Button variant="secondary" disabled={deletingPost} onClick={() => setPostToDelete(null)}>Cancel</Button><Button disabled={deletingPost} onClick={() => void confirmDeletePost()}><Trash2 size={14} />{deletingPost ? 'Deleting…' : 'Delete post'}</Button></div></div></Modal>}
   </div>;
 }
 

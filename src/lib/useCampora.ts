@@ -313,9 +313,25 @@ export function useCampora() {
     if (!text || text.length > 1000) throw new Error('Posts must be between 1 and 1,000 characters.');
     const allowedFeelings = ['Happy', 'Grateful', 'Excited', 'Motivated', 'Curious', 'Hopeful', 'Tired', 'Stressed', 'Anxious', 'Sad', 'Frustrated'];
     if (feeling && !allowedFeelings.includes(feeling)) throw new Error('Choose a feeling from the list.');
-    if (demo) { const item: CommunityPost = { id: makeId(), body: text, feeling, author_name: profile.full_name || 'You', author_id: profile.id, department: profile.department, created_at: now(), reactions: 0, comments: 0 }; updateData((current) => ({ ...current, posts: [item, ...current.posts] })); return; }
+    if (demo) { const item: CommunityPost = { id: makeId(), body: text, feeling, author_name: profile.full_name || 'You', author_id: profile.id || 'preview-user', department: profile.department, created_at: now(), reactions: 0, comments: 0 }; updateData((current) => ({ ...current, posts: [item, ...current.posts] })); return; }
     if (!supabase || !authRef.current) throw new Error('Sign in to post to the community.'); if (!navigator.onLine) throw new Error('You are offline. Connect before posting.');
     const user = await currentUserId(); const { data: createdPost, error } = await supabase.from('community_posts').insert({ author_id: user, body: text, feeling: feeling || null, status: 'approved' }).select('id').single(); if (error) throw error; if (!createdPost?.id) throw new Error('CAMPORA could not confirm that your post was saved.'); await refresh();
+  }
+  async function deletePost(postId: string) {
+    if (demo) {
+      const post = data.posts.find((item) => item.id === postId);
+      if (!post) return;
+      if (post.author_id && post.author_id !== (profile.id || 'preview-user')) throw new Error('You can delete only your own posts.');
+      updateData((current) => ({ ...current, posts: current.posts.filter((item) => item.id !== postId), comments: current.comments.filter((comment) => comment.post_id !== postId) }));
+      return;
+    }
+    if (!supabase || !authRef.current) throw new Error('Sign in to delete a community post.');
+    if (!navigator.onLine) throw new Error('You are offline. Connect before deleting a post.');
+    const user = await currentUserId();
+    const { data: deletedPost, error } = await supabase.from('community_posts').delete().eq('id', postId).eq('author_id', user).select('id').maybeSingle();
+    if (error) throw error;
+    if (!deletedPost) throw new Error('You can delete only your own posts.');
+    await refresh();
   }
   async function createComment(postId: string, body: string) {
     const text = body.trim();
@@ -536,7 +552,7 @@ export function useCampora() {
     await refresh();
   }
 
-  return { data, profile, setProfile, faculties, departments, publicProfiles, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
+  return { data, profile, setProfile, faculties, departments, publicProfiles, notifications, markNotificationRead, authenticated, authReady, loading, demo, configured: supabaseConfigured, syncError, recoveryMode, refresh, loadPublicProfile, saveProfile, uploadProfilePhoto, authenticate, signInWithGoogle, forgotPassword, resetPassword, logout, createResource, createExploreItem, createPost, deletePost, createComment, react, createReport, contactRequest, createSupportTicket, closeTicket, submitFeedback, loadAdminSnapshot, adminReview, adminPublishAnnouncement, adminAddLocation, adminAddFaculty, adminAddDepartment, adminPublishOpportunity, adminReplyTicket, adminSetRole, adminSetActive, adminResolveReport };
 }
 
 async function currentUserId() { if (!supabase) throw new Error('Database is not connected.'); const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw new Error('Please sign in again.'); return data.user.id; }

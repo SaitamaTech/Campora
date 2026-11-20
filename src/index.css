@@ -329,6 +329,9 @@ a { color: inherit; }
 .feed-list { display: flex; flex-direction: column; gap: 10px; }
 .post-card { padding: 15px; border: 1px solid rgba(194, 176, 218, .11); background: rgba(22, 16, 29, .86); border-radius: 14px; }
 .post-head { display: flex; align-items: center; gap: 9px; }
+.delete-post-button { color: #d596ba; }
+.delete-post-button:hover { color: #ffb4d9; border-color: rgba(255, 180, 217, .3); background: rgba(255, 105, 160, .08); }
+.delete-post-button:focus-visible { outline: 2px solid #dbaaff; outline-offset: 2px; }
 .post-byline { min-width: 0; flex: 1; }
 .post-byline strong, .post-byline span { display: block; }
 .post-byline strong { color: #e7e1ee; font-size: 12px; }
