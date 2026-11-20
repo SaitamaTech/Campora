@@ -569,15 +569,5 @@ values
   ('support-attachments', 'support-attachments', false, 10485760, array['image/jpeg','image/png','image/webp','application/pdf'])
 on conflict (id) do update set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
-alter table storage.objects enable row level security;
-create policy storage_owner_read on storage.objects for select to authenticated using (bucket_id in ('avatars','academic-resources','marketplace-images','lost-found-images','support-attachments') and (storage.foldername(name))[1] = (select auth.uid())::text);
-create policy storage_approved_academic_resource_read on storage.objects for select to anon, authenticated
-  using (bucket_id = 'academic-resources' and exists (select 1 from public.academic_resources r where r.storage_path = storage.objects.name and r.status = 'approved'));
-create policy storage_approved_marketplace_image_read on storage.objects for select to anon, authenticated
-  using (bucket_id = 'marketplace-images' and exists (select 1 from public.marketplace_listings m where m.status = 'approved' and m.image_paths ? storage.objects.name));
-create policy storage_approved_lost_found_image_read on storage.objects for select to anon, authenticated
-  using (bucket_id = 'lost-found-images' and exists (select 1 from public.lost_found_items l where l.status = 'approved' and l.image_path = storage.objects.name));
-create policy storage_owner_insert on storage.objects for insert to authenticated with check (bucket_id in ('avatars','academic-resources','marketplace-images','lost-found-images','support-attachments') and (storage.foldername(name))[1] = (select auth.uid())::text);
-create policy storage_owner_update on storage.objects for update to authenticated using (bucket_id in ('avatars','academic-resources','marketplace-images','lost-found-images','support-attachments') and (storage.foldername(name))[1] = (select auth.uid())::text) with check (bucket_id in ('avatars','academic-resources','marketplace-images','lost-found-images','support-attachments') and (storage.foldername(name))[1] = (select auth.uid())::text);
-create policy storage_owner_delete on storage.objects for delete to authenticated using (bucket_id in ('avatars','academic-resources','marketplace-images','lost-found-images','support-attachments') and (storage.foldername(name))[1] = (select auth.uid())::text);
-create policy storage_admin_manage on storage.objects for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- Storage-object policies are provisioned separately through Supabase Storage policy management.
